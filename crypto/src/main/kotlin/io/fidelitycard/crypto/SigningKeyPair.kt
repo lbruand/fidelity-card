@@ -16,6 +16,13 @@ class SigningKeyPair private constructor(
     val publicKey: VerifyingKey,
 ) {
 
+    /**
+     * The raw seed [fromSeed] was built from - this *is* the private key;
+     * whoever is going to persist an identity between app launches needs
+     * this, not just [publicKey].
+     */
+    val seed: ByteArray get() = privateKey.encoded
+
     fun sign(message: ByteArray): ByteArray {
         val signer = Ed25519Signer()
         signer.init(true, privateKey)

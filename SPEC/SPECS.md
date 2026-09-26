@@ -360,18 +360,27 @@ fidelity-card/
 ├── crypto/                     ← pure Kotlin/JVM library, NO Android deps
 │   ├── build.gradle.kts
 │   └── src/{main,test}/kotlin/...
-└── app/                        ← Android app, depends on :crypto
+├── core/                       ← pure Kotlin/JVM library, NO Android deps
+│   ├── build.gradle.kts
+│   └── src/{main,test}/kotlin/...
+└── app/                        ← Android app, depends on :crypto and :core
     ├── build.gradle.kts
     └── src/...
 ```
 
-`:crypto` is a plain Kotlin/JVM module, not an Android library module. It
-must build and run its full test suite with a bare JDK and no Android SDK.
-This is what makes the "usable elsewhere, testable separately" goal (§0,
-user requirement) concrete rather than aspirational: `:app` consumes it as
-an ordinary project dependency
-(`implementation(project(":crypto"))`), and nothing else in the repo is
-allowed to leak into it.
+`:crypto` and `:core` are both plain Kotlin/JVM modules, not Android
+library modules. Each must build and run its full test suite with a bare
+JDK and no Android SDK. This is what makes the "usable elsewhere, testable
+separately" goal (§0, user requirement) concrete rather than aspirational:
+`:app` consumes both as ordinary project dependencies
+(`implementation(project(":crypto"))`, `implementation(project(":core"))`),
+and nothing else in the repo is allowed to leak into either.
+
+`:core` holds the stamp/redemption business rules from §5.3-§5.4 and §7.1
+(`CardProgress`, `StampLedger`, `RedemptionValidator`) as plain functions
+over primitives (serials, counts) — deliberately with no dependency on
+`:crypto` at all, so these rules stay checkable in complete isolation from
+the wire format or any cryptographic concern.
 
 ### 10.2 Dependency management
 
@@ -387,26 +396,30 @@ allowed to leak into it.
   deterministic byte output on every platform is the entire point of the
   format and shouldn't depend on a third-party library's own
   serialization-order behavior.
+- `:core` has no runtime dependency at all (not even on `:crypto`), just
+  JUnit 5 for tests — see §10.1.
 - `:app` dependencies: AndroidX, Jetpack Compose, Room, ZXing
   (`zxing-android-embedded`, not ML Kit — see §8). No Google Play Services
   anywhere in the tree.
-- Not doing yet: publishing `:crypto` as a standalone artifact (Maven
-  Central / JitPack) for consumption by other repos or non-Kotlin-JVM
+- Not doing yet: publishing `:crypto` or `:core` as standalone artifacts
+  (Maven Central / JitPack) for consumption by other repos or non-Kotlin-JVM
   projects. Being a clean, dependency-light, independently-tested module
   already satisfies "usable elsewhere" for now; publishing is a separate
   decision to revisit once an actual external consumer exists.
 
 ### 10.3 CI/CD
 
-Two independent GitHub Actions workflows, split so the crypto library's CI
-never needs an Android SDK or emulator:
+Two independent GitHub Actions workflows, split so the pure-JVM modules'
+CI never needs an Android SDK or emulator:
 
-- **`crypto-ci.yml`** — triggers on changes under `crypto/**`. Just
-  `actions/setup-java` + `./gradlew :crypto:test`. Runs on JDK 17 and 21 as
-  a cheap, continuous check on the "portable/reusable elsewhere" claim.
-- **`app-ci.yml`** — triggers on changes under `app/**`. Sets up the
-  Android SDK, runs `./gradlew :app:assembleDebug :app:testDebugUnitTest
-  :app:lint`.
+- **`jvm-ci.yml`** — triggers on changes under `crypto/**` or `core/**`.
+  Just `actions/setup-java` + `./gradlew :crypto:test :core:test`. Runs on
+  JDK 17 and 21 as a cheap, continuous check on the "portable/reusable
+  elsewhere" claim — `:crypto` and `:core` run together here since both
+  are plain Kotlin/JVM and neither needs anything the other pulls in.
+- **`app-ci.yml`** — triggers on changes under `app/**`, `crypto/**` or
+  `core/**` (the app depends on both). Sets up the Android SDK, runs
+  `./gradlew :app:assembleDebug :app:testDebugUnitTest :app:lint`.
 - A dependency-tree guardrail step (`./gradlew :app:dependencies` checked
   against a known Play-Services/tracker denylist) to catch an accidental
   F-Droid-disqualifying dependency before it lands.

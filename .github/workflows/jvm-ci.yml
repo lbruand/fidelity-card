@@ -1,21 +1,23 @@
-name: crypto-ci
+name: jvm-ci
 
 on:
   push:
     branches: [main]
     paths:
       - "crypto/**"
+      - "core/**"
       - "gradle/**"
       - "build.gradle.kts"
       - "settings.gradle.kts"
-      - ".github/workflows/crypto-ci.yml"
+      - ".github/workflows/jvm-ci.yml"
   pull_request:
     paths:
       - "crypto/**"
+      - "core/**"
       - "gradle/**"
       - "build.gradle.kts"
       - "settings.gradle.kts"
-      - ".github/workflows/crypto-ci.yml"
+      - ".github/workflows/jvm-ci.yml"
 
 jobs:
   test:
@@ -32,5 +34,5 @@ jobs:
           distribution: temurin
           java-version: ${{ matrix.java }}
 
-      - name: Run crypto module tests
-        run: ./gradlew :crypto:test --no-daemon
+      - name: Run crypto and core module tests
+        run: ./gradlew :crypto:test :core:test --no-daemon

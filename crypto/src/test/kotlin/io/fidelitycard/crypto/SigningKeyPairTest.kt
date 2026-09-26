@@ -68,6 +68,15 @@ class SigningKeyPairTest {
     }
 
     @Test
+    fun `seed round trips through fromSeed, so a key pair can be persisted and reloaded`() {
+        val seed = ByteArray(32) { it.toByte() }
+        val keyPair = SigningKeyPair.fromSeed(seed)
+
+        assertArrayEquals(seed, keyPair.seed)
+        assertEquals(keyPair.publicKey, SigningKeyPair.fromSeed(keyPair.seed).publicKey)
+    }
+
+    @Test
     fun `fromSeed is deterministic`() {
         val seed = ByteArray(32) { it.toByte() }
 

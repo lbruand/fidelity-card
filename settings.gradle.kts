@@ -17,4 +17,5 @@ dependencyResolutionManagement {
 rootProject.name = "fidelity-card"
 
 include(":crypto")
+include(":core")
 include(":app")
