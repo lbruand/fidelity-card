@@ -1,0 +1,36 @@
+name: crypto-ci
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "crypto/**"
+      - "gradle/**"
+      - "build.gradle.kts"
+      - "settings.gradle.kts"
+      - ".github/workflows/crypto-ci.yml"
+  pull_request:
+    paths:
+      - "crypto/**"
+      - "gradle/**"
+      - "build.gradle.kts"
+      - "settings.gradle.kts"
+      - ".github/workflows/crypto-ci.yml"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        java: [17, 21]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK ${{ matrix.java }}
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java }}
+
+      - name: Run crypto module tests
+        run: ./gradlew :crypto:test --no-daemon
