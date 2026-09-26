@@ -33,8 +33,16 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+      # ubuntu-latest runners ship a full Android SDK already (at
+      # $ANDROID_HOME); android-actions/setup-android@v3 additionally tries
+      # to install the long-removed legacy "tools" package and fails
+      # outright, so it's dropped rather than fixed. AGP auto-downloads any
+      # specific platform/build-tools version it still needs, provided
+      # licenses are accepted.
+      - name: Accept Android SDK licenses
+        run: |
+          SDKMANAGER=$(find "$ANDROID_HOME/cmdline-tools" -maxdepth 2 -name sdkmanager | head -n1)
+          yes | "$SDKMANAGER" --licenses > /dev/null || true
 
       - name: Assemble debug APK
         run: ./gradlew :app:assembleDebug --no-daemon
