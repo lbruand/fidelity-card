@@ -56,8 +56,14 @@ class BusinessDetailViewModel(
             _scanState.value = when (val outcome = repository.handleCustomerMessage(programId, bytes)) {
                 is IssuerScanOutcome.Enrolled ->
                     ScanCustomerState.Responding(outcome.responseBytes, "New card created - show this back to your customer")
-                is IssuerScanOutcome.Stamped ->
-                    ScanCustomerState.Responding(outcome.responseBytes, "Stamp added! Show this back to your customer")
+                is IssuerScanOutcome.Stamped -> ScanCustomerState.Responding(
+                    outcome.responseBytes,
+                    if (outcome.wasResent) {
+                        "Catching this card up on a stamp it missed - show this back to your customer"
+                    } else {
+                        "Stamp added! Show this back to your customer"
+                    },
+                )
                 is IssuerScanOutcome.Redeemed ->
                     ScanCustomerState.Responding(outcome.responseBytes, "Reward redeemed! Show this back to your customer")
                 is IssuerScanOutcome.Failed -> ScanCustomerState.Failed(outcome.message)

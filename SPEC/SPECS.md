@@ -241,15 +241,36 @@ Issuer device                          Collector device
 Collector device                       Issuer device
   [shows "Stamp Request QR"]  ------->   scans it
   { card_id, last_accepted_serial }
-                                         looks up card_id, checks
-                                         last_accepted_serial matches its
-                                         own issued count (else warns of
-                                         desync, see §7.4)
-                                         mints Stamp Token, serial = last+1
+                                         looks up card_id, compares
+                                         last_accepted_serial against its
+                                         own issued count (see below)
   scans it             <-------------   [shows Stamp Token QR]
   verifies sig, verifies serial == last+1
   stores stamp
 ```
+
+The issuer's comparison has three outcomes, not just accept/reject
+(`io.fidelitycard.core.StampIssuance`):
+
+- **Equal** — the collector is caught up: mint a genuinely new Stamp Token,
+  serial = last+1.
+- **Collector behind** (`last_accepted_serial` < issuer's issued count) —
+  almost always means a *previous* stamp's QR round trip was interrupted
+  after the issuer minted it but before the collector accepted it (the scan
+  failed, the app closed, etc). Rather than refusing, the issuer resends
+  the exact previously-minted token for `last_accepted_serial + 1` (kept on
+  the issuer's device for this reason - see §7) so the collector catches
+  up one stamp at a time, at the normal pace, without granting anything
+  unearned or minting a duplicate for the same serial.
+- **Collector ahead** — the collector claims more stamps than the issuer
+  ever issued for this card. Not recoverable by resending anything; this is
+  real inconsistency, not a lost round trip. Not automatically fixable — see
+  §7.1's escape hatch.
+
+This makes the common case (an interrupted exchange) self-healing on the
+very next attempt, with no manual step. It does *not* need Bluetooth/Wi-Fi
+or the two devices to reconcile out-of-band - the resend happens over the
+exact same QR-exchange shape as an ordinary stamp.
 
 ### 6.3 Redemption
 
@@ -281,12 +302,18 @@ Local storage only (Room/SQLite), no cloud sync in v1. Suggested schema:
 IssuerProgram(program_id PK, name, threshold, reward, privkey_alias, created_at)
 IssuedCard(program_id, card_id PK, collector_pubkey, issued_serial_count,
            redeemed_through_serial, created_at)
+IssuedStamp(program_id, card_id, serial, stamp_token_bytes)  -- PK (program_id, card_id, serial)
 
 CollectorCard(program_id, card_id PK, issuer_pubkey, program_name, threshold,
               reward, collector_privkey_alias, last_accepted_serial,
               created_at)
 CollectorStamp(card_id, serial, issued_at, nonce, sig)  -- PK (card_id, serial)
 ```
+
+`IssuedStamp` is what makes the resend in §6.2 possible: the issuer keeps
+every Stamp Token it has ever minted for a card (not just the count), so a
+collector who fell behind can be caught up with the exact token they
+missed rather than a freshly minted one.
 
 Private keys are stored via Android Keystore (hardware-backed where
 available), never exported in plaintext; `privkey_alias` is a Keystore
@@ -303,6 +330,8 @@ alias, not the key material itself.
 | Collector claims more stamps than issued | Issuer's own `issued_serial_count` is authoritative for what *it* will redeem; collector-side state is just a client cache |
 | Double redemption at the same issuer device | Issuer tracks `redeemed_through_serial` per card |
 | Double redemption across multiple issuer devices for the same program (no sync) | **Not fully solved in v1** — documented limitation, §7.4 |
+| Collector falls behind the issuer's count (interrupted stamp round trip) | Self-healing: issuer resends the already-minted stamp instead of refusing, see §6.2 |
+| Collector claims to be *ahead* of what the issuer ever issued (genuine corruption, not a lost round trip) | Not automatically fixable; escape hatch is deleting the card and rejoining (collector-initiated, loses that card's progress) |
 | Loss of collector's phone | Out of scope for v1 (no backup/restore yet, see §10) |
 
 ### 7.4 Known limitation: multi-device issuers
@@ -376,11 +405,12 @@ separately" goal (§0, user requirement) concrete rather than aspirational:
 (`implementation(project(":crypto"))`, `implementation(project(":core"))`),
 and nothing else in the repo is allowed to leak into either.
 
-`:core` holds the stamp/redemption business rules from §5.3-§5.4 and §7.1
-(`CardProgress`, `StampLedger`, `RedemptionValidator`) as plain functions
-over primitives (serials, counts) — deliberately with no dependency on
-`:crypto` at all, so these rules stay checkable in complete isolation from
-the wire format or any cryptographic concern.
+`:core` holds the stamp/redemption business rules from §5.3-§5.4, §6.2 and
+§7.1 (`CardProgress`, `StampLedger`, `RedemptionValidator`,
+`StampIssuance`) as plain functions over primitives (serials, counts) —
+deliberately with no dependency on `:crypto` at all, so these rules stay
+checkable in complete isolation from the wire format or any cryptographic
+concern.
 
 ### 10.2 Dependency management
 

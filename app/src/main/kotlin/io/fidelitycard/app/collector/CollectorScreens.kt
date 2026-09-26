@@ -15,6 +15,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.FloatingActionButton
@@ -23,10 +24,14 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -154,12 +159,19 @@ fun JoinBusinessScreen(onBack: () -> Unit, onDone: (String) -> Unit) {
 }
 
 @Composable
-fun CardDetailScreen(cardId: String, onBack: () -> Unit, onGetStamp: (String) -> Unit, onRedeem: (String) -> Unit) {
+fun CardDetailScreen(
+    cardId: String,
+    onBack: () -> Unit,
+    onGetStamp: (String) -> Unit,
+    onRedeem: (String) -> Unit,
+    onLeft: () -> Unit,
+) {
     val repo = collectorRepository()
     val viewModel: CardDetailViewModel = viewModel(
         factory = viewModelFactory { initializer { CardDetailViewModel(repo, cardId) } },
     )
     val card by viewModel.card.collectAsState()
+    var showLeaveConfirmation by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = { TopAppBar(title = { Text(card?.programName ?: "") }, navigationIcon = { BackButton(onBack) }) },
@@ -185,7 +197,30 @@ fun CardDetailScreen(cardId: String, onBack: () -> Unit, onGetStamp: (String) ->
                     Text("Get a stamp", style = MaterialTheme.typography.titleMedium)
                 }
             }
+
+            Spacer(modifier = Modifier.height(24.dp))
+            TextButton(onClick = { showLeaveConfirmation = true }) {
+                Text("Leave this business")
+            }
         }
+    }
+
+    if (showLeaveConfirmation) {
+        AlertDialog(
+            onDismissRequest = { showLeaveConfirmation = false },
+            title = { Text("Leave this business?") },
+            text = { Text("This removes the card and its stamps from this phone. You can rejoin later, but you'll start over from zero.") },
+            confirmButton = {
+                TextButton(onClick = { viewModel.leaveBusiness(onLeft) }) {
+                    Text("Leave")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showLeaveConfirmation = false }) {
+                    Text("Cancel")
+                }
+            },
+        )
     }
 }
 

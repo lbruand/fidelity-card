@@ -31,6 +31,15 @@ interface IssuedCardDao {
 }
 
 @Dao
+interface IssuedStampDao {
+    @Insert
+    suspend fun insert(stamp: IssuedStampEntity)
+
+    @Query("SELECT * FROM issued_stamps WHERE programId = :programId AND cardId = :cardId AND serial = :serial")
+    suspend fun find(programId: String, cardId: String, serial: Int): IssuedStampEntity?
+}
+
+@Dao
 interface CollectorCardDao {
     @Insert
     suspend fun insert(card: CollectorCardEntity)
@@ -46,6 +55,9 @@ interface CollectorCardDao {
 
     @Update
     suspend fun update(card: CollectorCardEntity)
+
+    @Query("DELETE FROM collector_cards WHERE cardId = :cardId")
+    suspend fun deleteById(cardId: String)
 }
 
 @Dao
@@ -58,4 +70,7 @@ interface CollectorStampDao {
 
     @Query("DELETE FROM collector_stamps WHERE cardId = :cardId AND serial <= :throughSerial")
     suspend fun deleteRedeemed(cardId: String, throughSerial: Int)
+
+    @Query("DELETE FROM collector_stamps WHERE cardId = :cardId")
+    suspend fun deleteAllForCard(cardId: String)
 }

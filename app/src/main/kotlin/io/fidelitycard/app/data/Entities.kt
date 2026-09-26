@@ -58,3 +58,18 @@ data class CollectorStampEntity(
     val serial: Int,
     val stampTokenBytes: ByteArray,
 )
+
+/**
+ * A stamp this device has minted for a card, from the issuer's side. Kept
+ * (not just counted) so a stamp request from a collector who fell behind -
+ * e.g. their previous scan of this exact stamp never went through - can be
+ * answered by resending it rather than refusing outright; see
+ * [io.fidelitycard.core.StampIssuance].
+ */
+@Entity(tableName = "issued_stamps", primaryKeys = ["programId", "cardId", "serial"])
+data class IssuedStampEntity(
+    val programId: String,
+    val cardId: String,
+    val serial: Int,
+    val stampTokenBytes: ByteArray,
+)

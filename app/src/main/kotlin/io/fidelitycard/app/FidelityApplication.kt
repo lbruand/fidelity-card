@@ -15,11 +15,16 @@ import io.fidelitycard.app.data.IssuerRepository
 class FidelityApplication : Application() {
 
     private val database: FidelityCardDatabase by lazy {
-        Room.databaseBuilder(this, FidelityCardDatabase::class.java, "fidelity-card.db").build()
+        Room.databaseBuilder(this, FidelityCardDatabase::class.java, "fidelity-card.db")
+            // Pre-release, no backup/restore yet (SPEC/SPECS.md §11) and no
+            // real user data to protect: wiping on a schema bump is fine for
+            // now. Replace with a real Migration before any actual release.
+            .fallbackToDestructiveMigration(true)
+            .build()
     }
 
     val issuerRepository: IssuerRepository by lazy {
-        IssuerRepository(database.issuerProgramDao(), database.issuedCardDao())
+        IssuerRepository(database.issuerProgramDao(), database.issuedCardDao(), database.issuedStampDao())
     }
 
     val collectorRepository: CollectorRepository by lazy {

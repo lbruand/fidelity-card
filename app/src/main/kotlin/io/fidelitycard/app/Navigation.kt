@@ -95,6 +95,7 @@ fun FidelityCardApp() {
                 onBack = { navController.popBackStack() },
                 onGetStamp = { navController.navigate(Routes.stampFlow(cardId)) },
                 onRedeem = { navController.navigate(Routes.redeemFlow(cardId)) },
+                onLeft = { navController.popBackStack(Routes.CARD_LIST, inclusive = false) },
             )
         }
         composable(

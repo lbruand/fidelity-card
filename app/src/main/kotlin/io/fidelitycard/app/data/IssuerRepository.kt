@@ -2,6 +2,8 @@ package io.fidelitycard.app.data
 
 import io.fidelitycard.app.qr.CustomerMessage
 import io.fidelitycard.core.RedemptionValidator
+import io.fidelitycard.core.StampIssuance
+import io.fidelitycard.core.StampRequestDecision
 import io.fidelitycard.crypto.CardCertificate
 import io.fidelitycard.crypto.InvalidSignatureException
 import io.fidelitycard.crypto.ProgramManifest
@@ -23,7 +25,9 @@ data class ProgramSummary(
 /** What happened after the issuer scanned whatever a customer's phone was showing. */
 sealed interface IssuerScanOutcome {
     data class Enrolled(val responseBytes: ByteArray) : IssuerScanOutcome
-    data class Stamped(val responseBytes: ByteArray, val newStampCount: Int) : IssuerScanOutcome
+
+    /** [wasResent] distinguishes a genuinely new stamp from catching a card up on one it already earned. */
+    data class Stamped(val responseBytes: ByteArray, val newStampCount: Int, val wasResent: Boolean) : IssuerScanOutcome
     data class Redeemed(val responseBytes: ByteArray) : IssuerScanOutcome
     data class Failed(val message: String) : IssuerScanOutcome
 }
@@ -38,6 +42,7 @@ sealed interface IssuerScanOutcome {
 class IssuerRepository(
     private val programDao: IssuerProgramDao,
     private val issuedCardDao: IssuedCardDao,
+    private val issuedStampDao: IssuedStampDao,
 ) {
 
     fun observePrograms(): Flow<List<ProgramSummary>> =
@@ -109,13 +114,33 @@ class IssuerRepository(
     ): IssuerScanOutcome {
         val card = issuedCardDao.find(program.programId, request.cardId)
             ?: return IssuerScanOutcome.Failed("This card could not be found")
-        if (request.lastAcceptedSerial != card.issuedSerialCount) {
-            return IssuerScanOutcome.Failed("This card is out of sync - ask the customer to reopen it and try again")
+
+        return when (
+            val decision = StampIssuance.decide(
+                requestedLastAcceptedSerial = request.lastAcceptedSerial,
+                issuedSerialCount = card.issuedSerialCount,
+            )
+        ) {
+            is StampRequestDecision.MintNew -> {
+                val stamp = StampToken.mint(issuer, program.programId, card.cardId, decision.nextSerial)
+                val wireBytes = stamp.toWireBytes()
+                issuedStampDao.insert(IssuedStampEntity(program.programId, card.cardId, decision.nextSerial, wireBytes))
+                issuedCardDao.update(card.copy(issuedSerialCount = decision.nextSerial))
+                IssuerScanOutcome.Stamped(wireBytes, decision.nextSerial, wasResent = false)
+            }
+            is StampRequestDecision.ResendPrevious -> {
+                val previous = issuedStampDao.find(program.programId, card.cardId, decision.serial)
+                    ?: return IssuerScanOutcome.Failed(
+                        "This card's records are inconsistent and can't be repaired automatically - " +
+                            "ask the customer to leave and rejoin this business",
+                    )
+                IssuerScanOutcome.Stamped(previous.stampTokenBytes, decision.serial, wasResent = true)
+            }
+            is StampRequestDecision.Rejected -> IssuerScanOutcome.Failed(
+                "This card's records are inconsistent and can't be repaired automatically - " +
+                    "ask the customer to leave and rejoin this business",
+            )
         }
-        val nextSerial = card.issuedSerialCount + 1
-        val stamp = StampToken.mint(issuer, program.programId, card.cardId, nextSerial)
-        issuedCardDao.update(card.copy(issuedSerialCount = nextSerial))
-        return IssuerScanOutcome.Stamped(stamp.toWireBytes(), nextSerial)
     }
 
     private suspend fun handleRedemption(

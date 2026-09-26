@@ -59,6 +59,18 @@ class CollectorRepository(
     fun observeCard(cardId: String): Flow<CardSummary?> =
         cardDao.observeById(cardId).map { it?.toSummary() }
 
+    /**
+     * Deletes a card and its stamps entirely, so the person can rejoin from
+     * scratch. The escape hatch for the one desync case that can't be
+     * repaired automatically (SPEC/SPECS.md - a card claiming more stamps
+     * than the issuer ever issued for it): irreversible, loses whatever
+     * progress this card had.
+     */
+    suspend fun leaveBusiness(cardId: String) {
+        stampDao.deleteAllForCard(cardId)
+        cardDao.deleteById(cardId)
+    }
+
     fun parseProgramQr(bytes: ByteArray): ProgramManifest? = try {
         ProgramManifest.parseAndVerify(bytes)
     } catch (e: InvalidSignatureException) {

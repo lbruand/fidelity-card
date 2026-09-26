@@ -18,9 +18,16 @@ class CardListViewModel(repository: CollectorRepository) : ViewModel() {
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 }
 
-class CardDetailViewModel(repository: CollectorRepository, cardId: String) : ViewModel() {
+class CardDetailViewModel(private val repository: CollectorRepository, private val cardId: String) : ViewModel() {
     val card: StateFlow<CardSummary?> = repository.observeCard(cardId)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    fun leaveBusiness(onLeft: () -> Unit) {
+        viewModelScope.launch {
+            repository.leaveBusiness(cardId)
+            onLeft()
+        }
+    }
 }
 
 /** Joining a business is its own little state machine because it carries a not-yet-persisted [PendingJoin] between its two scans. */
