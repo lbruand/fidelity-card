@@ -5,10 +5,8 @@ import androidx.room.PrimaryKey
 
 /**
  * A loyalty program this device issues. [issuerSeed] is the raw 32-byte
- * Ed25519 seed - SPEC/SPECS.md §7 calls for Android Keystore-backed storage
- * instead; Ed25519 support in AndroidKeyStore only arrived in API 33,
- * below this app's minSdk, so key wrapping is a known gap for a later pass
- * (not silently ignored, tracked here and in SPEC/SPECS.md §11).
+ * Ed25519 seed, stored as plain bytes rather than Android Keystore-backed -
+ * a deliberate scope decision, not an oversight (SPEC/SPECS.md §2/§7).
  */
 @Entity(tableName = "issuer_programs")
 data class IssuerProgramEntity(
@@ -46,6 +44,28 @@ data class RedeemedStampEntity(
     val cardId: String,
     val stampIdHex: String,
     val redeemedAt: Long,
+)
+
+/**
+ * A stamp id this issuer has ever minted for a card - a local ledger, not
+ * a wire message. Populated the moment a stamp is minted, and used only by
+ * the large-threshold redemption path (SPEC/SPECS.md §6.3/§11, `TODO.md`):
+ * once a redemption's stamp count outgrows what fits as full Compact Stamp
+ * Proofs in one QR, the collector can instead submit bare 16-byte stamp
+ * ids, verified against this ledger instead of re-checking a signature per
+ * stamp - ~5x smaller again than a compact proof. This trades the
+ * signature's self-contained proof for a dependency on this issuer
+ * device's own local state surviving, the same shape as the existing
+ * §7.4 multi-till limitation - which is why full-signature redemption
+ * stays the default for normal thresholds and this is only a fallback for
+ * when the QR would otherwise not fit.
+ */
+@Entity(tableName = "issuer_minted_stamps", primaryKeys = ["programId", "cardId", "stampIdHex"])
+data class IssuerMintedStampEntity(
+    val programId: String,
+    val cardId: String,
+    val stampIdHex: String,
+    val mintedAt: Long,
 )
 
 /**

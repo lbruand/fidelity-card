@@ -6,6 +6,7 @@ import io.fidelitycard.app.data.BackupRepository
 import io.fidelitycard.app.data.CollectorRepository
 import io.fidelitycard.app.data.FidelityCardDatabase
 import io.fidelitycard.app.data.IssuerRepository
+import io.fidelitycard.app.data.MIGRATION_4_5
 
 /**
  * Manual dependency wiring, on purpose: this app has few enough
@@ -26,11 +27,17 @@ class FidelityApplication : Application() {
             // Room throws if one is missing instead of silently wiping
             // (TODO.md, SPEC/SPECS.md §8).
             .fallbackToDestructiveMigrationFrom(true, 1, 2, 3)
+            .addMigrations(MIGRATION_4_5)
             .build()
     }
 
     val issuerRepository: IssuerRepository by lazy {
-        IssuerRepository(database.issuerProgramDao(), database.issuedCardDao(), database.redeemedStampDao())
+        IssuerRepository(
+            database.issuerProgramDao(),
+            database.issuedCardDao(),
+            database.redeemedStampDao(),
+            database.issuerMintedStampDao(),
+        )
     }
 
     val collectorRepository: CollectorRepository by lazy {

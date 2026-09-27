@@ -318,12 +318,25 @@ values — repeating them per stamp would be pure waste. This alone cuts
 per-stamp cost from ~156 bytes (a full self-contained Stamp Token) to 88,
 roughly doubling how large a threshold fits in one scannable QR before
 needing anything fancier (v1 targets 5–20; this comfortably covers up to
-~30–40). For thresholds meaningfully larger than that, see the "Large
-reward thresholds" item in `TODO.md` for the follow-up plan (an
-issuer-side ledger of minted stamp ids, letting redemption send bare
-16-byte ids instead of 88-byte proofs) — deliberately *not* an
-animated/fragmented QR sequence, which trades a real scanning-UX cost for
-a problem that has a cheaper cryptographic fix.
+~30–40).
+
+For a redemption above that (`io.fidelitycard.app.data.
+CollectorRepository`'s `LARGE_REDEMPTION_STAMP_COUNT_THRESHOLD`, currently
+40), the collector's app automatically switches to a **large-threshold
+redemption**: bare 16-byte stamp ids instead of 88-byte proofs (~5x
+smaller again), no signature and no `issued_at` at all. Authenticity comes
+from the issuer's own `IssuerMintedStamp` ledger instead of a signature
+check — a stamp id this device never minted for this card simply won't be
+found there. This trades the Compact Stamp Proof's self-contained
+signature (verifiable with no dependency on this issuer device's own
+state) for that local ledger surviving — the same shape as the existing
+§7.4 multi-till limitation, which is exactly why full-signature redemption
+stays the default and this only kicks in once it's actually needed. A
+probabilistic commit-then-spot-check scheme (Merkle root + random sample)
+was considered as an alternative and rejected: sampling `k` of `N` stamps
+only catches one bad stamp hidden among the rest with probability
+`~1-(N-k)/N` (e.g. ~10% with `k=10`, `N=100`), too weak for the threat
+that matters.
 
 ## 7. Data model (local storage)
 
@@ -333,6 +346,8 @@ Local storage only (Room/SQLite), no cloud sync in v1. Suggested schema:
 IssuerProgram(program_id PK, name, threshold, reward, privkey_alias, created_at)
 IssuedCard(program_id, card_id PK, created_at)  -- lazily created, see §6.1
 RedeemedStamp(program_id, card_id, stamp_id_hex, redeemed_at)  -- PK (program_id, card_id, stamp_id_hex)
+IssuerMintedStamp(program_id, card_id, stamp_id_hex, minted_at)  -- PK (program_id, card_id, stamp_id_hex),
+              large-threshold redemption ledger, see §6.3
 
 CollectorCard(program_id, card_id PK, issuer_pubkey, program_name, threshold,
               reward, created_at)  -- card_id is just a locally-generated string, see §4
@@ -553,13 +568,13 @@ CI never needs an Android SDK or emulator:
   signed, collector-visible `RevocationCertificate` message type was
   considered but decided against as too much machinery for this app's
   actual stakes (a free coffee, not fraud-at-scale).
-- **Large thresholds**: Compact Stamp Proofs (§6.3/CRYPTO_WIRE_FORMAT.md
-  §5.2.1) push the comfortable ceiling to ~30-40 in one QR; for
-  meaningfully larger thresholds, see `TODO.md` for the planned follow-up
-  (an issuer-side ledger of minted stamp ids, so redemption can send bare
-  ids instead of signed proofs) — animated/fragmented QR sequences were
-  considered and rejected as the primary fix, for the real scanning-UX
-  cost they add.
+- ~~**Large thresholds**~~ — resolved: Compact Stamp Proofs (§6.3/
+  CRYPTO_WIRE_FORMAT.md §5.2.1) push the comfortable ceiling to ~30-40 in
+  one QR; beyond that, the collector automatically switches to bare
+  16-byte stamp ids verified against the issuer's own minted-stamp ledger
+  instead of a signature (§6.3, §7's `IssuerMintedStamp`) - ~5x smaller
+  again. Animated/fragmented QR sequences, and a probabilistic
+  commit-then-spot-check scheme, were both considered and rejected (§6.3).
 - **NFC as a second transport**: token formats in §5 are transport-agnostic
   (they're just signed byte blobs); NFC could reuse them unchanged.
 - ~~**Token encoding**~~ — resolved: a fixed binary layout, specified in

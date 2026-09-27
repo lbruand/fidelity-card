@@ -3,19 +3,27 @@ package io.fidelitycard.backup
 import io.fidelitycard.crypto.wire.WireReader
 import io.fidelitycard.crypto.wire.WireWriter
 
-private const val FORMAT_VERSION = 1
+private const val FORMAT_VERSION = 2
 private const val KEY_LENGTH_BYTES = 32
 
 /**
  * A full local snapshot of everything the app has stored - every program
  * an issuer runs (seed and all - see [IssuerProgramRow]), every card
- * either side is tracking, and every stamp. This is the plaintext that
- * [BackupEncryption] wraps; nothing here is ever written anywhere without
- * that wrapping around it first (SPEC/SPECS.md §11 "Backup & restore").
+ * either side is tracking, every stamp, and the issuer's minted-stamp
+ * ledger ([IssuerMintedStampRow], SPEC/SPECS.md §6.3/§11 - needed for
+ * large-threshold redemptions of stamps minted before this backup). This
+ * is the plaintext that [BackupEncryption] wraps; nothing here is ever
+ * written anywhere without that wrapping around it first (SPEC/SPECS.md
+ * §11 "Backup & restore").
  *
  * Mirrors the Room entities in `:app` field-for-field by design - this is
  * a full replace-on-restore backup, not a merge, so there's no need for
  * the format to diverge from storage; see `io.fidelitycard.app.data`.
+ *
+ * `FORMAT_VERSION` bumped 1 -> 2 to add [issuerMintedStamps]; a version-1
+ * backup file is rejected outright rather than read as "empty ledger" -
+ * simpler, and this early pre-release there's no real backup file anyone
+ * needs read back.
  */
 data class BackupSnapshot(
     val issuerPrograms: List<IssuerProgramRow>,
@@ -23,6 +31,7 @@ data class BackupSnapshot(
     val redeemedStamps: List<RedeemedStampRow>,
     val collectorCards: List<CollectorCardRow>,
     val collectorStamps: List<CollectorStampRow>,
+    val issuerMintedStamps: List<IssuerMintedStampRow>,
 ) {
     fun encode(): ByteArray {
         val writer = WireWriter().writeByte(FORMAT_VERSION)
@@ -31,6 +40,7 @@ data class BackupSnapshot(
         writer.writeTable(redeemedStamps) { it.writeTo(writer) }
         writer.writeTable(collectorCards) { it.writeTo(writer) }
         writer.writeTable(collectorStamps) { it.writeTo(writer) }
+        writer.writeTable(issuerMintedStamps) { it.writeTo(writer) }
         return writer.toByteArray()
     }
 
@@ -49,6 +59,7 @@ data class BackupSnapshot(
                 redeemedStamps = reader.readTable { RedeemedStampRow.readFrom(reader) },
                 collectorCards = reader.readTable { CollectorCardRow.readFrom(reader) },
                 collectorStamps = reader.readTable { CollectorStampRow.readFrom(reader) },
+                issuerMintedStamps = reader.readTable { IssuerMintedStampRow.readFrom(reader) },
             )
             reader.requireFullyConsumed()
             return snapshot
@@ -145,6 +156,30 @@ data class RedeemedStampRow(
     companion object {
         internal fun readFrom(reader: WireReader): RedeemedStampRow =
             RedeemedStampRow(reader.readString(), reader.readString(), reader.readString(), reader.readInt64())
+    }
+}
+
+/**
+ * A stamp id this issuer has ever minted for a card - the ledger the
+ * large-threshold redemption fallback verifies against instead of a
+ * signature (SPEC/SPECS.md §6.3/§11).
+ */
+data class IssuerMintedStampRow(
+    val programId: String,
+    val cardId: String,
+    val stampIdHex: String,
+    val mintedAt: Long,
+) {
+    internal fun writeTo(writer: WireWriter) {
+        writer.writeString(programId)
+        writer.writeString(cardId)
+        writer.writeString(stampIdHex)
+        writer.writeInt64(mintedAt)
+    }
+
+    companion object {
+        internal fun readFrom(reader: WireReader): IssuerMintedStampRow =
+            IssuerMintedStampRow(reader.readString(), reader.readString(), reader.readString(), reader.readInt64())
     }
 }
 

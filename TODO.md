@@ -49,7 +49,7 @@ TODO
        over its own redemptions); a signed, collector-visible
        `RevocationCertificate` was considered but decided against as not
        worth the wire-format weight for this app.
- * [ ] Large reward thresholds (much more than ~20 stamps): a single QR's payload
+ * [x] Large reward thresholds (much more than ~20 stamps): a single QR's payload
        gets tight (each StampToken is ~156 bytes; a QR tops out around 2-3KB) —
        explored in conversation, decided against fragmented/animated QR
        sequences (real scanning-UX cost) in favor of, in order:
@@ -60,18 +60,22 @@ TODO
             cost (wrong program_id/card_id reconstructs different signed bytes
             and just fails verification). Roughly doubles the threshold that
             fits in one QR (~20 -> ~30-40).
-         2. For thresholds beyond that: bring back a lightweight issuer-side
-            ledger of minted `(card_id, stamp_id)` pairs (not for gating
-            issuance - just a local record) so a large-threshold redemption can
-            send raw 16-byte stamp ids instead of full 156-byte signed tokens,
-            verified against that ledger instead of re-checking signatures.
-            ~10x smaller, full cryptographic certainty (no sampling). Trade-off:
+         2. [x] Done: an issuer-side ledger of minted stamp ids
+            (`IssuerMintedStampEntity`/`IssuerMintedStampDao`, DB version 5,
+            `MIGRATION_4_5`) so a large-threshold redemption
+            (`CustomerMessage.LargeRedemptionRequest`) can send raw 16-byte
+            stamp ids instead of full proofs, verified against that ledger
+            (`IssuerRepository.handleLargeRedemption`) instead of
+            re-checking signatures - ~5x smaller again than a compact
+            proof. `CollectorRepository.buildRedemptionRequest` switches to
+            this mode automatically above
+            `LARGE_REDEMPTION_STAMP_COUNT_THRESHOLD` (40 stamps); included
+            in the backup/restore format (`IssuerMintedStampRow`,
+            BACKUP_FORMAT.md bumped to format version 2). Trade-off:
             redemption now depends on the issuer device's own local state
-            surviving - same shape as the existing §7.4 multi-till limitation.
-            Backup & restore is done now, so that blocker is cleared; still
-            not started. Keep full-signature redemption as the
-            default/resilient path for normal thresholds; this becomes an
-            explicit "large threshold" mode.
+            surviving - same shape as the existing §7.4 multi-till
+            limitation - which is why full-signature redemption stays the
+            default for normal thresholds.
          3. Considered and rejected as the primary fix: a probabilistic
             commit-then-spot-check scheme (Merkle root + random sample of k
             stamps). The math doesn't work for the threat that matters - hiding

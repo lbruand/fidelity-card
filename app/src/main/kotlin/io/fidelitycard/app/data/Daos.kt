@@ -62,6 +62,27 @@ interface RedeemedStampDao {
     suspend fun deleteAll()
 }
 
+@Dao
+interface IssuerMintedStampDao {
+    @Insert
+    suspend fun insert(stamp: IssuerMintedStampEntity)
+
+    @Insert
+    suspend fun insertAll(stamps: List<IssuerMintedStampEntity>)
+
+    @Query(
+        "SELECT stampIdHex FROM issuer_minted_stamps WHERE programId = :programId AND cardId = :cardId " +
+            "AND stampIdHex IN (:stampIdHexes)",
+    )
+    suspend fun findKnown(programId: String, cardId: String, stampIdHexes: List<String>): List<String>
+
+    @Query("SELECT * FROM issuer_minted_stamps")
+    suspend fun getAll(): List<IssuerMintedStampEntity>
+
+    @Query("DELETE FROM issuer_minted_stamps")
+    suspend fun deleteAll()
+}
+
 /**
  * A card joined with a live count of its currently-held stamps. Room
  * tracks invalidation across both tables in the query, so this Flow

@@ -15,6 +15,16 @@ import java.util.UUID
 
 private const val TAG = "CollectorRepository"
 
+/**
+ * Above this many stamps in one redemption, switch from Compact Stamp
+ * Proofs (88 bytes/stamp) to bare stamp ids (16 bytes/stamp) to keep the
+ * request scannable as one QR code - see [CollectorRepository.buildRedemptionRequest]
+ * and CustomerMessage.LargeRedemptionRequest. ~30-40 compact proofs is the
+ * documented comfortable ceiling for a single QR (SPEC/SPECS.md §6.3); 40
+ * is picked to stay under that with some margin.
+ */
+private const val LARGE_REDEMPTION_STAMP_COUNT_THRESHOLD = 40
+
 data class CardSummary(
     val cardId: String,
     val programId: String,
@@ -126,15 +136,13 @@ class CollectorRepository(
         if (held.size < card.threshold) return null
 
         // Re-verifying here (cheap - one Ed25519 check per stamp) doubles as a
-        // consistency check on our own stored bytes, and lets us compute each
-        // stamp's compact proof (io.fidelitycard.crypto.StampToken §5.2.1),
-        // which strips the program_id/card_id every stamp in this batch
-        // shares, instead of sending full self-contained tokens - the fix for
-        // large-threshold redemptions outgrowing one QR (SPEC/SPECS.md §6.3).
-        val proofs = held.mapNotNull { entity ->
+        // consistency check on our own stored bytes, and gives us each
+        // stamp's raw id plus its compact proof (io.fidelitycard.crypto.
+        // StampToken §5.2.1) up front, whichever mode ends up used below.
+        val verified = held.mapNotNull { entity ->
             try {
                 val token = StampToken.parseAndVerify(entity.stampTokenBytes, issuerPublicKey)
-                entity.stampIdHex to token.toCompactProofBytes()
+                Triple(entity.stampIdHex, token.stampId, token.toCompactProofBytes())
             } catch (e: InvalidSignatureException) {
                 // This is our own previously-accepted stamp failing to
                 // re-verify - should never happen. Silently dropping it would
@@ -148,10 +156,19 @@ class CollectorRepository(
                 null
             }
         }
-        if (proofs.size < card.threshold) return null
+        if (verified.size < card.threshold) return null
 
-        val request = CustomerMessage.RedemptionRequest(card.programId, cardId, proofs.map { it.second })
-        return PendingRedemption(proofs.map { it.first }, request.toWireBytes())
+        // Compact Stamp Proofs stay the default: they're self-contained
+        // (a signature, verifiable independent of the issuer device's own
+        // local state), which the raw-id fallback below deliberately isn't
+        // (SPEC/SPECS.md §6.3/§11). Only switch once that many proofs would
+        // push a QR past a comfortable size.
+        val request = if (verified.size > LARGE_REDEMPTION_STAMP_COUNT_THRESHOLD) {
+            CustomerMessage.LargeRedemptionRequest(card.programId, cardId, verified.map { it.second })
+        } else {
+            CustomerMessage.RedemptionRequest(card.programId, cardId, verified.map { it.third })
+        }
+        return PendingRedemption(verified.map { it.first }, request.toWireBytes())
     }
 
     suspend fun acceptRedemptionResponse(
