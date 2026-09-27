@@ -2,8 +2,6 @@ package io.fidelitycard.app.data
 
 import io.fidelitycard.app.qr.CustomerMessage
 import io.fidelitycard.core.RedemptionValidator
-import io.fidelitycard.core.StampIssuance
-import io.fidelitycard.core.StampRequestDecision
 import io.fidelitycard.crypto.CardCertificate
 import io.fidelitycard.crypto.InvalidSignatureException
 import io.fidelitycard.crypto.ProgramManifest
@@ -25,9 +23,7 @@ data class ProgramSummary(
 /** What happened after the issuer scanned whatever a customer's phone was showing. */
 sealed interface IssuerScanOutcome {
     data class Enrolled(val responseBytes: ByteArray) : IssuerScanOutcome
-
-    /** [wasResent] distinguishes a genuinely new stamp from catching a card up on one it already earned. */
-    data class Stamped(val responseBytes: ByteArray, val newStampCount: Int, val wasResent: Boolean) : IssuerScanOutcome
+    data class Stamped(val responseBytes: ByteArray) : IssuerScanOutcome
     data class Redeemed(val responseBytes: ByteArray) : IssuerScanOutcome
     data class Failed(val message: String) : IssuerScanOutcome
 }
@@ -38,11 +34,17 @@ sealed interface IssuerScanOutcome {
  * action (SPEC/SPECS.md §6). Each program's signing key is reconstructed
  * from its stored seed only for the moment it's needed to sign a response,
  * never held longer than that.
+ *
+ * Stamps are unordered (SPEC/SPECS.md §6.2): minting one is unconditional,
+ * gated only by the cashier's own decision to tap "Scan a customer" for a
+ * real purchase - the same trust model as a paper stamp card. Only
+ * redemption is cryptographically gated, via [RedemptionValidator] and the
+ * spent-stamp-id store in [redeemedStampDao].
  */
 class IssuerRepository(
     private val programDao: IssuerProgramDao,
     private val issuedCardDao: IssuedCardDao,
-    private val issuedStampDao: IssuedStampDao,
+    private val redeemedStampDao: RedeemedStampDao,
 ) {
 
     fun observePrograms(): Flow<List<ProgramSummary>> =
@@ -99,8 +101,6 @@ class IssuerRepository(
                 programId = program.programId,
                 cardId = request.cardId,
                 collectorPublicKey = request.collectorPublicKey.bytes,
-                issuedSerialCount = 0,
-                redeemedThroughSerial = 0,
                 createdAt = System.currentTimeMillis(),
             ),
         )
@@ -112,35 +112,10 @@ class IssuerRepository(
         issuer: SigningKeyPair,
         request: CustomerMessage.StampRequest,
     ): IssuerScanOutcome {
-        val card = issuedCardDao.find(program.programId, request.cardId)
+        issuedCardDao.find(program.programId, request.cardId)
             ?: return IssuerScanOutcome.Failed("This card could not be found")
-
-        return when (
-            val decision = StampIssuance.decide(
-                requestedLastAcceptedSerial = request.lastAcceptedSerial,
-                issuedSerialCount = card.issuedSerialCount,
-            )
-        ) {
-            is StampRequestDecision.MintNew -> {
-                val stamp = StampToken.mint(issuer, program.programId, card.cardId, decision.nextSerial)
-                val wireBytes = stamp.toWireBytes()
-                issuedStampDao.insert(IssuedStampEntity(program.programId, card.cardId, decision.nextSerial, wireBytes))
-                issuedCardDao.update(card.copy(issuedSerialCount = decision.nextSerial))
-                IssuerScanOutcome.Stamped(wireBytes, decision.nextSerial, wasResent = false)
-            }
-            is StampRequestDecision.ResendPrevious -> {
-                val previous = issuedStampDao.find(program.programId, card.cardId, decision.serial)
-                    ?: return IssuerScanOutcome.Failed(
-                        "This card's records are inconsistent and can't be repaired automatically - " +
-                            "ask the customer to leave and rejoin this business",
-                    )
-                IssuerScanOutcome.Stamped(previous.stampTokenBytes, decision.serial, wasResent = true)
-            }
-            is StampRequestDecision.Rejected -> IssuerScanOutcome.Failed(
-                "This card's records are inconsistent and can't be repaired automatically - " +
-                    "ask the customer to leave and rejoin this business",
-            )
-        }
+        val stamp = StampToken.mint(issuer, program.programId, request.cardId)
+        return IssuerScanOutcome.Stamped(stamp.toWireBytes())
     }
 
     private suspend fun handleRedemption(
@@ -151,12 +126,12 @@ class IssuerRepository(
         val card = issuedCardDao.find(program.programId, request.cardId)
             ?: return IssuerScanOutcome.Failed("This card could not be found")
 
-        val serials = try {
+        val stampIdHexes = try {
             request.stampTokenWireBytes.map { wireBytes ->
                 val token = StampToken.parseAndVerify(wireBytes, issuer.publicKey)
                 check(token.cardId == card.cardId) { "stamp belongs to a different card" }
-                token.serial
-            }.sorted()
+                token.stampId.toHex()
+            }
         } catch (e: InvalidSignatureException) {
             return IssuerScanOutcome.Failed("One of those stamps isn't valid")
         } catch (e: MalformedMessageException) {
@@ -165,20 +140,21 @@ class IssuerRepository(
             return IssuerScanOutcome.Failed("One of those stamps isn't valid")
         }
 
+        val alreadyRedeemed = redeemedStampDao.findAlreadyRedeemed(program.programId, card.cardId, stampIdHexes).toSet()
         return when (
             val result = RedemptionValidator.validate(
-                submittedSerialsSortedAscending = serials,
-                alreadyRedeemedThroughSerial = card.redeemedThroughSerial,
-                issuedSerialCount = card.issuedSerialCount,
+                submittedStampIds = stampIdHexes,
+                alreadyRedeemedStampIds = alreadyRedeemed,
                 threshold = program.threshold,
             )
         ) {
             is RedemptionValidator.Result.Invalid -> IssuerScanOutcome.Failed(result.reason)
-            is RedemptionValidator.Result.Valid -> {
-                val cert = RedemptionCertificate.issue(
-                    issuer, program.programId, card.cardId, result.redeemedThroughSerial,
+            RedemptionValidator.Result.Valid -> {
+                val redeemedAt = System.currentTimeMillis()
+                redeemedStampDao.insertAll(
+                    stampIdHexes.map { RedeemedStampEntity(program.programId, card.cardId, it, redeemedAt) },
                 )
-                issuedCardDao.update(card.copy(redeemedThroughSerial = result.redeemedThroughSerial))
+                val cert = RedemptionCertificate.issue(issuer, program.programId, card.cardId, stampIdHexes.size)
                 IssuerScanOutcome.Redeemed(cert.toWireBytes())
             }
         }

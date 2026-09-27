@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import io.fidelitycard.app.data.CardSummary
 import io.fidelitycard.app.data.CollectorRepository
 import io.fidelitycard.app.data.PendingJoin
+import io.fidelitycard.app.data.PendingRedemption
 import io.fidelitycard.app.data.RedemptionAcceptOutcome
 import io.fidelitycard.app.data.StampAcceptOutcome
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -132,6 +133,7 @@ class RedeemFlowViewModel(private val repository: CollectorRepository, private v
 
     private val _state = MutableStateFlow<ExchangeState>(ExchangeState.Preparing)
     val state: StateFlow<ExchangeState> = _state
+    private var pending: PendingRedemption? = null
 
     init {
         prepareRequest()
@@ -143,8 +145,9 @@ class RedeemFlowViewModel(private val repository: CollectorRepository, private v
 
     fun onScanned(bytes: ByteArray?) {
         if (bytes == null) return
+        val currentPending = pending ?: return
         viewModelScope.launch {
-            _state.value = when (val outcome = repository.acceptRedemptionResponse(cardId, bytes)) {
+            _state.value = when (val outcome = repository.acceptRedemptionResponse(cardId, currentPending, bytes)) {
                 RedemptionAcceptOutcome.Accepted -> ExchangeState.Done("Enjoy your reward!")
                 is RedemptionAcceptOutcome.Rejected -> ExchangeState.Failed(outcome.reason)
             }
@@ -155,9 +158,10 @@ class RedeemFlowViewModel(private val repository: CollectorRepository, private v
 
     private fun prepareRequest() {
         viewModelScope.launch {
-            val bytes = repository.buildRedemptionRequest(cardId)
-            _state.value = if (bytes != null) {
-                ExchangeState.ShowRequest(bytes, "Show this to the cashier to claim your reward")
+            val request = repository.buildRedemptionRequest(cardId)
+            pending = request
+            _state.value = if (request != null) {
+                ExchangeState.ShowRequest(request.requestBytes, "Show this to the cashier to claim your reward")
             } else {
                 ExchangeState.Failed("Not enough stamps yet")
             }

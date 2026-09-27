@@ -15,20 +15,20 @@ class RedemptionCertificateTest {
             issuer = issuer,
             programId = "PROGRAM123",
             cardId = "card-1",
-            redeemedThroughSerial = 10,
+            redeemedCount = 10,
         )
 
         val parsed = RedemptionCertificate.parseAndVerify(cert.toWireBytes(), issuer.publicKey)
 
         assertEquals("PROGRAM123", parsed.programId)
         assertEquals("card-1", parsed.cardId)
-        assertEquals(10, parsed.redeemedThroughSerial)
+        assertEquals(10, parsed.redeemedCount)
         assertEquals(cert.redeemedAt, parsed.redeemedAt)
     }
 
     @Test
     fun `rejects a certificate not signed by the expected issuer`() {
-        val cert = RedemptionCertificate.issue(issuer, "PROGRAM123", "card-1", redeemedThroughSerial = 10)
+        val cert = RedemptionCertificate.issue(issuer, "PROGRAM123", "card-1", redeemedCount = 10)
         val someoneElse = SigningKeyPair.generate().publicKey
 
         assertThrows(InvalidSignatureException::class.java) {
@@ -38,7 +38,7 @@ class RedemptionCertificateTest {
 
     @Test
     fun `rejects a certificate whose signed payload was altered`() {
-        val bytes = RedemptionCertificate.issue(issuer, "PROGRAM123", "card-1", redeemedThroughSerial = 10)
+        val bytes = RedemptionCertificate.issue(issuer, "PROGRAM123", "card-1", redeemedCount = 10)
             .toWireBytes()
 
         val tampered = bytes.copyOf()
@@ -51,9 +51,9 @@ class RedemptionCertificateTest {
     }
 
     @Test
-    fun `redeemedThroughSerial must be positive`() {
+    fun `redeemedCount must be positive`() {
         assertThrows(IllegalArgumentException::class.java) {
-            RedemptionCertificate.issue(issuer, "PROGRAM123", "card-1", redeemedThroughSerial = 0)
+            RedemptionCertificate.issue(issuer, "PROGRAM123", "card-1", redeemedCount = 0)
         }
     }
 }

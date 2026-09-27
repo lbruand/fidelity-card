@@ -37,30 +37,28 @@ class LoyaltyProtocolFlowTest {
         val cardCert = CardCertificate.parseAndVerify(cardCertBytes, program.issuerPublicKey)
         assertEquals(cardId, cardCert.cardId)
 
-        // 3. Stamping: ten purchases, ten QR round trips. The collector
-        // enforces serial contiguity itself - a lone StampToken only proves
-        // "the issuer signed this", not "this is the next one in order".
-        var lastAcceptedSerial = 0
+        // 3. Stamping: ten purchases, ten QR round trips. Stamps are
+        // unordered - each is independently valid, deduplicated by its own
+        // random stamp id, not by position in a sequence.
+        val acceptedStampIds = mutableSetOf<List<Byte>>()
         repeat(program.threshold) {
-            val nextSerial = lastAcceptedSerial + 1
-            val stampBytes = StampToken.mint(issuer, program.programId, cardId, serial = nextSerial).toWireBytes()
+            val stampBytes = StampToken.mint(issuer, program.programId, cardId).toWireBytes()
 
             val stamp = StampToken.parseAndVerify(stampBytes, program.issuerPublicKey)
-            assertEquals(nextSerial, stamp.serial, "issuer and collector must agree on the next serial")
-            lastAcceptedSerial = stamp.serial
+            assertTrue(acceptedStampIds.add(stamp.stampId.toList()), "every minted stamp id must be unique")
         }
-        assertEquals(program.threshold, lastAcceptedSerial)
+        assertEquals(program.threshold, acceptedStampIds.size)
 
-        // 4. Redemption: collector has enough stamps, issuer closes the run out.
+        // 4. Redemption: collector has enough stamps, issuer closes them out.
         val redemptionBytes = RedemptionCertificate.issue(
             issuer,
             program.programId,
             cardId,
-            redeemedThroughSerial = lastAcceptedSerial,
+            redeemedCount = acceptedStampIds.size,
         ).toWireBytes()
         val redemption = RedemptionCertificate.parseAndVerify(redemptionBytes, program.issuerPublicKey)
 
         assertEquals(cardId, redemption.cardId)
-        assertTrue(redemption.redeemedThroughSerial >= program.threshold)
+        assertTrue(redemption.redeemedCount >= program.threshold)
     }
 }

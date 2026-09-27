@@ -77,8 +77,8 @@ as FOSS today. This spec proceeds on that basis.
 - **Collector**: an identity (the customer) that holds Card Instances.
 - **Card Instance**: one collector's enrollment in one Program. Identified
   by a Card ID.
-- **Stamp Token**: a single, uniquely-serialed, signed credit toward a Card
-  Instance.
+- **Stamp Token**: a single, uniquely-identified, signed credit toward a
+  Card Instance.
 - **Redemption**: the act of exchanging a full set of Stamp Tokens (≥
   threshold) for a reward, witnessed and closed out by the issuer.
 
@@ -159,58 +159,88 @@ party from grafting stamps meant for one collector onto another.
 
 ### 5.3 Stamp Token
 
-A Stamp Token is the unforgeable unit. Each is monotonically serialed **per
-card**, so double-issuance and reordering are detectable:
+A Stamp Token is the unforgeable unit. **Deliberately unordered**: each
+stamp is an independent grant identified by a random `stamp_id`, not a
+position in a per-card sequence (this was a design revision from an
+earlier ordered/serial approach — see the rationale at the end of this
+section):
 
 ```json
 {
-  "v": 1,
+  "v": 2,
   "type": "stamp",
   "program_id": "...",
   "card_id": "...",
-  "serial": 4,
+  "stamp_id": "base64(16B random, chosen by the issuer at mint time)",
   "issued_at": "unix_ts",
-  "nonce": "base64(8B random)",
-  "sig": "base64(Ed25519 by issuer_privkey over program_id|card_id|serial|issued_at|nonce)"
+  "sig": "base64(Ed25519 by issuer_privkey over program_id|card_id|stamp_id|issued_at)"
 }
 ```
 
-- `serial` starts at 1 and increments by 1 per card; the collector app
-  refuses to accept a stamp whose serial isn't exactly
-  `last_accepted_serial + 1`, which makes replay of an old stamp QR (or
-  reuse of a stamp meant for a different card) immediately detectable on
-  the collector's own device.
-- The nonce plus the issuer's signature is what makes the token
-  "cryptographic" and unique: nobody without `issuer_privkey` can produce a
-  token that verifies against `issuer_pubkey`, and a screenshot/photo of a
-  token is inert once its serial has been consumed (see §6.2 — a stamp
-  isn't "consumed" by viewing it, but redemption burns the whole run of
-  serials, see §5.4).
+- `stamp_id` is what makes the token unique and is the key the collector
+  deduplicates on (if it somehow receives the exact same token twice, e.g.
+  re-scanning its own screenshot by mistake, it just stores it once).
+- Minting a stamp is **unconditional**: the issuer signs a fresh
+  `stamp_id` any time it decides to (gated only by the cashier's own
+  choice to tap "Scan a customer" for a real purchase). The protocol does
+  not check or enforce how many stamps a card has been given, or prevent
+  the same purchase from producing more than one — that is treated as an
+  operational/trust matter for the issuer, the same as a paper stamp card.
+  What the protocol *does* cryptographically enforce is that a stamp can't
+  be forged (Ed25519 verification) and can't be **redeemed** twice (§5.4).
+
+**Why unordered, not a monotonic serial (as originally specified):** an
+earlier revision of this spec used a per-card serial, requiring the
+collector to tell the issuer its `last_accepted_serial` and the issuer to
+check `serial == last_accepted + 1`. That created a real bug class: if a
+stamp's QR round trip was interrupted after minting but before the
+collector accepted it (failed scan, closed app), the issuer's count and
+the collector's count would diverge with no way back — every subsequent
+stamp request compared unequal forever. A self-healing "resend" mechanism
+was built to patch this, then discarded along with the ordering entirely,
+once it became clear the ordering wasn't buying anything the trust model
+needed: double-issuance was never actually prevented by the serial check
+either (a dishonest or confused party could simply re-present the same
+"give me a stamp" request to farm unlimited stamps, since the issuer had
+no way to recognize a repeat of the same request) — so the serial was
+adding failure modes (the desync bug) without closing the gap it looked
+like it was closing. Dropping it removes that whole bug class and is
+simpler for the same threat coverage; the one thing dropped ordering costs
+is the mechanism no longer detects double-issuance, which is now an
+explicit operational trust boundary rather than an implicit protocol one.
+It also incidentally helps the multi-till case (§7.4): two independently
+minted stamps for the same card never collide the way two independently
+incremented serials could.
 
 ### 5.4 Redemption Certificate
 
-When a Card Instance's highest contiguous accepted serial reaches
-`threshold`, the collector can present the run `[1..threshold]` for
-redemption. The issuer verifies all signatures, verifies contiguity, then
-issues:
+A receipt, not a range: since stamps are unordered there is no "through
+serial N" to certify. The collector presents any set of its currently-held
+stamps whose size is `>= threshold`; the issuer verifies every signature,
+checks none of the submitted stamp ids repeat within the same submission
+and none were already redeemed before (its own persisted
+"redeemed stamp ids" store — an exact set, not a probabilistic one; see
+§7.1 for why an exact set is the right choice here), then issues:
 
 ```json
 {
-  "v": 1,
+  "v": 2,
   "type": "redemption",
   "program_id": "...",
   "card_id": "...",
-  "redeemed_through_serial": 10,
+  "redeemed_count": 10,
   "redeemed_at": "unix_ts",
+  "redemption_id": "base64(16B random)",
   "sig": "base64(Ed25519 by issuer_privkey)"
 }
 ```
 
-The collector app deletes/archives stamps `1..10` locally and the card
-continues accruing from serial 11. The issuer device records
-`(card_id → highest redeemed_through_serial)` locally so it refuses to
-re-redeem the same run twice **on that same device** (see §7.4 for the
-multi-device caveat).
+The collector already knows exactly which stamp ids it submitted (it built
+the request) and deletes those locally on a valid certificate — the
+certificate only needs to confirm the count, not enumerate the ids again.
+The issuer's own redeemed-stamp-ids store is what refuses to redeem the
+same stamp twice **on that same device** (see §7.4 for the multi-device
+caveat, which now only concerns double redemption, not lost stamps).
 
 ## 6. QR exchange protocols
 
@@ -240,52 +270,39 @@ Issuer device                          Collector device
 ```
 Collector device                       Issuer device
   [shows "Stamp Request QR"]  ------->   scans it
-  { card_id, last_accepted_serial }
-                                         looks up card_id, compares
-                                         last_accepted_serial against its
-                                         own issued count (see below)
+  { program_id, card_id }
+                                         looks up card_id; if it exists,
+                                         unconditionally mints a fresh
+                                         Stamp Token (random stamp_id)
   scans it             <-------------   [shows Stamp Token QR]
-  verifies sig, verifies serial == last+1
-  stores stamp
+  verifies sig, verifies program_id/
+  card_id match, stores stamp (keyed
+  by its stamp_id - a re-scan of the
+  same token is a harmless no-op)
 ```
 
-The issuer's comparison has three outcomes, not just accept/reject
-(`io.fidelitycard.core.StampIssuance`):
-
-- **Equal** — the collector is caught up: mint a genuinely new Stamp Token,
-  serial = last+1.
-- **Collector behind** (`last_accepted_serial` < issuer's issued count) —
-  almost always means a *previous* stamp's QR round trip was interrupted
-  after the issuer minted it but before the collector accepted it (the scan
-  failed, the app closed, etc). Rather than refusing, the issuer resends
-  the exact previously-minted token for `last_accepted_serial + 1` (kept on
-  the issuer's device for this reason - see §7) so the collector catches
-  up one stamp at a time, at the normal pace, without granting anything
-  unearned or minting a duplicate for the same serial.
-- **Collector ahead** — the collector claims more stamps than the issuer
-  ever issued for this card. Not recoverable by resending anything; this is
-  real inconsistency, not a lost round trip. Not automatically fixable — see
-  §7.1's escape hatch.
-
-This makes the common case (an interrupted exchange) self-healing on the
-very next attempt, with no manual step. It does *not* need Bluetooth/Wi-Fi
-or the two devices to reconcile out-of-band - the resend happens over the
-exact same QR-exchange shape as an ordinary stamp.
+Minting is unconditional and stateless per request — there is no count or
+sequence to check against, so there is nothing to fall out of sync (see
+§5.3 for why this design was chosen over an earlier ordered/serial one,
+and what it deliberately does not protect against: double-issuance is an
+operational trust matter, not a protocol check).
 
 ### 6.3 Redemption
 
 ```
 Collector device                       Issuer device
   [shows "Redemption Request QR"]  -->   scans it
-  { card_id, stamps: [token_1..token_N] }
-  (N >= threshold, contiguous run)       verifies every token's sig,
-                                         verifies contiguity and that
-                                         program_id/card_id match,
-                                         verifies not already redeemed
-                                         through this serial
-                                         issues Redemption Certificate
+  { card_id, stamps: [id_1..id_N] }
+  (N >= threshold, all currently        verifies every token's sig,
+   held, unredeemed stamps)             verifies program_id/card_id match,
+                                        verifies no id repeats within this
+                                        submission and none is in its own
+                                        redeemed-stamp-ids store
+                                        issues Redemption Certificate,
+                                        records these ids as redeemed
   scans it              <-------------   [shows Redemption Certificate QR]
-  verifies sig, archives stamps 1..N
+  verifies sig, deletes the exact
+  stamp ids it submitted
 ```
 
 Note: a Redemption Request QR embedding many stamp tokens can get large.
@@ -300,20 +317,23 @@ Local storage only (Room/SQLite), no cloud sync in v1. Suggested schema:
 
 ```
 IssuerProgram(program_id PK, name, threshold, reward, privkey_alias, created_at)
-IssuedCard(program_id, card_id PK, collector_pubkey, issued_serial_count,
-           redeemed_through_serial, created_at)
-IssuedStamp(program_id, card_id, serial, stamp_token_bytes)  -- PK (program_id, card_id, serial)
+IssuedCard(program_id, card_id PK, collector_pubkey, created_at)
+RedeemedStamp(program_id, card_id, stamp_id_hex, redeemed_at)  -- PK (program_id, card_id, stamp_id_hex)
 
 CollectorCard(program_id, card_id PK, issuer_pubkey, program_name, threshold,
-              reward, collector_privkey_alias, last_accepted_serial,
-              created_at)
-CollectorStamp(card_id, serial, issued_at, nonce, sig)  -- PK (card_id, serial)
+              reward, collector_privkey_alias, created_at)
+CollectorStamp(card_id, stamp_id_hex, stamp_token_bytes)  -- PK (card_id, stamp_id_hex)
 ```
 
-`IssuedStamp` is what makes the resend in §6.2 possible: the issuer keeps
-every Stamp Token it has ever minted for a card (not just the count), so a
-collector who fell behind can be caught up with the exact token they
-missed rather than a freshly minted one.
+`RedeemedStamp` is the issuer's exact spent-set — not a probabilistic
+structure (a Bloom filter, say). At this app's actual scale (one business's
+own redemptions, on its own phone) an exact set costs nothing: even 50
+redemptions/day for 10 years is under 200k rows, trivial for a phone,
+and it avoids the false-rejection risk a Bloom filter would introduce for
+no real benefit at this scale (a Bloom filter's error direction is always
+"wrongly say already-spent," never the reverse — so it never *causes*
+double redemption, but it does cause wrongful denial of a genuine reward
+once it starts filling up; simply unnecessary here).
 
 Private keys are stored via Android Keystore (hardware-backed where
 available), never exported in plaintext; `privkey_alias` is a Keystore
@@ -324,24 +344,28 @@ alias, not the key material itself.
 | Threat | Mitigation |
 |---|---|
 | Forge a stamp without issuer's key | Ed25519 signature verification |
-| Replay an old stamp QR (photo of a screen) | Per-card monotonic serial, collector rejects non-`last+1` |
+| Replay an old stamp QR (photo of a screen) | Deduplicated by `stamp_id` on the collector's own device; redeeming it twice is separately blocked (see below) |
 | Graft a stamp issued for card A onto card B | `card_id` is inside the signed payload |
 | Issuer denies the deal terms after the fact | Program QR terms are signed and kept by the collector |
-| Collector claims more stamps than issued | Issuer's own `issued_serial_count` is authoritative for what *it* will redeem; collector-side state is just a client cache |
-| Double redemption at the same issuer device | Issuer tracks `redeemed_through_serial` per card |
+| Same purchase minting more than one stamp (double issuance) | **Not prevented by the protocol** — issuance is unconditional by design (§5.3/§6.2); this is an explicit operational/trust matter for the issuer, the same as a paper card, not a cryptographic guarantee |
+| Redeeming the same stamp twice at the same issuer device | Issuer's `RedeemedStamp` store — exact match on `stamp_id`, not a range |
 | Double redemption across multiple issuer devices for the same program (no sync) | **Not fully solved in v1** — documented limitation, §7.4 |
-| Collector falls behind the issuer's count (interrupted stamp round trip) | Self-healing: issuer resends the already-minted stamp instead of refusing, see §6.2 |
-| Collector claims to be *ahead* of what the issuer ever issued (genuine corruption, not a lost round trip) | Not automatically fixable; escape hatch is deleting the card and rejoining (collector-initiated, loses that card's progress) |
+| A card's local state becomes corrupted or otherwise unrecoverable | Not automatically fixable; escape hatch is deleting the card and rejoining (collector-initiated, loses that card's progress) |
 | Loss of collector's phone | Out of scope for v1 (no backup/restore yet, see §10) |
 
 ### 7.4 Known limitation: multi-device issuers
 
 If one Program's private key is used by several physical devices (e.g. two
 tills at the same shop) without a shared "already redeemed" ledger, a
-collector could in theory redeem the same run of stamps once at each till.
+collector could in theory redeem the same set of stamps once at each till.
 v1 accepts this risk for the common case (one issuer device per program)
 and documents it; §11 sketches an optional lightweight sync service for
-issuers who need multi-till support.
+issuers who need multi-till support. (Unordered stamps, §5.3, already
+remove the *other* multi-till failure mode this used to have — two tills
+independently minting for the same card no longer collide the way two
+independently incremented serials could, so a legitimate purchase at
+either till is never lost. Only the double-*redemption* side of the
+limitation remains.)
 
 ## 8. Android architecture
 
@@ -405,12 +429,11 @@ separately" goal (§0, user requirement) concrete rather than aspirational:
 (`implementation(project(":crypto"))`, `implementation(project(":core"))`),
 and nothing else in the repo is allowed to leak into either.
 
-`:core` holds the stamp/redemption business rules from §5.3-§5.4, §6.2 and
-§7.1 (`CardProgress`, `StampLedger`, `RedemptionValidator`,
-`StampIssuance`) as plain functions over primitives (serials, counts) —
-deliberately with no dependency on `:crypto` at all, so these rules stay
-checkable in complete isolation from the wire format or any cryptographic
-concern.
+`:core` holds the stamp/redemption business rules from §5.4 and §7.1
+(`CardProgress`, `RedemptionValidator`) as plain functions over primitives
+(stamp counts, stamp id strings) — deliberately with no dependency on
+`:crypto` at all, so these rules stay checkable in complete isolation from
+the wire format or any cryptographic concern.
 
 ### 10.2 Dependency management
 

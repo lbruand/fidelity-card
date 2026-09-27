@@ -10,52 +10,51 @@ import java.security.SecureRandom
 import java.time.Instant
 
 /**
- * A single, unforgeable credit toward a card (SPEC/SPECS.md §5.3). The
- * [serial] is assigned by the issuer and must increase by exactly one per
- * card; enforcing that contiguity is the collector app's job (it is what
- * makes replaying an old stamp detectable), not this type's — a
- * [StampToken] on its own only proves "the issuer signed this exact
- * (program, card, serial, moment)," nothing about ordering relative to
- * other stamps.
+ * A single, unforgeable credit toward a card (SPEC/SPECS.md §5.3).
+ * Deliberately unordered: stamps are independent, uniquely-identified
+ * grants rather than a numbered sequence. A [StampToken] on its own only
+ * proves "the issuer signed this exact (program, card, stamp, moment)" -
+ * nothing about how many other stamps this card has, or in what order.
+ * Preventing the same purchase from minting more than one stamp is treated
+ * as an operational/trust matter for the issuer (same as a paper card),
+ * not something the protocol enforces; preventing the same stamp from
+ * being redeemed twice is enforced (see [RedemptionCertificate]).
  */
 class StampToken private constructor(
     val programId: String,
     val cardId: String,
-    val serial: Int,
+    val stampId: ByteArray,
     val issuedAt: Instant,
-    private val nonce: ByteArray,
     private val signature: ByteArray,
 ) {
 
     fun toWireBytes(): ByteArray =
         WireWriter()
-            .apply { writeSignedPayload(this, programId, cardId, serial, issuedAt, nonce) }
+            .apply { writeSignedPayload(this, programId, cardId, stampId, issuedAt) }
             .writeFixedBytes(signature, SIGNATURE_LENGTH_BYTES)
             .toByteArray()
 
     companion object {
-        private const val NONCE_LENGTH_BYTES = 8
+        const val STAMP_ID_LENGTH_BYTES = 16
 
         fun mint(
             issuer: SigningKeyPair,
             programId: String,
             cardId: String,
-            serial: Int,
             issuedAt: Instant = Instant.now(),
-            nonce: ByteArray = randomNonce(),
+            stampId: ByteArray = randomStampId(),
         ): StampToken {
-            require(serial > 0) { "serial must be positive, was $serial" }
-            require(nonce.size == NONCE_LENGTH_BYTES) {
-                "Nonce must be $NONCE_LENGTH_BYTES bytes, was ${nonce.size}"
+            require(stampId.size == STAMP_ID_LENGTH_BYTES) {
+                "stampId must be $STAMP_ID_LENGTH_BYTES bytes, was ${stampId.size}"
             }
             val issuedAt = Instant.ofEpochMilli(issuedAt.toEpochMilli())
 
             val payload = WireWriter()
-                .apply { writeSignedPayload(this, programId, cardId, serial, issuedAt, nonce) }
+                .apply { writeSignedPayload(this, programId, cardId, stampId, issuedAt) }
                 .toByteArray()
             val signature = issuer.sign(payload)
 
-            return StampToken(programId, cardId, serial, issuedAt, nonce, signature)
+            return StampToken(programId, cardId, stampId, issuedAt, signature)
         }
 
         fun parseAndVerify(bytes: ByteArray, issuerPublicKey: VerifyingKey): StampToken {
@@ -64,40 +63,37 @@ class StampToken private constructor(
 
             val programId = reader.readString()
             val cardId = reader.readString()
-            val serial = reader.readInt32()
+            val stampId = reader.readFixedBytes(STAMP_ID_LENGTH_BYTES)
             val issuedAt = Instant.ofEpochMilli(reader.readInt64())
-            val nonce = reader.readFixedBytes(NONCE_LENGTH_BYTES)
             val signature = reader.readFixedBytes(SIGNATURE_LENGTH_BYTES)
             reader.requireFullyConsumed()
 
             val payload = WireWriter()
-                .apply { writeSignedPayload(this, programId, cardId, serial, issuedAt, nonce) }
+                .apply { writeSignedPayload(this, programId, cardId, stampId, issuedAt) }
                 .toByteArray()
             if (!issuerPublicKey.verify(payload, signature)) {
                 throw InvalidSignatureException("StampToken signature does not verify against the given issuer key")
             }
 
-            return StampToken(programId, cardId, serial, issuedAt, nonce, signature)
+            return StampToken(programId, cardId, stampId, issuedAt, signature)
         }
 
         private fun writeSignedPayload(
             writer: WireWriter,
             programId: String,
             cardId: String,
-            serial: Int,
+            stampId: ByteArray,
             issuedAt: Instant,
-            nonce: ByteArray,
         ) {
             writer.writeByte(WIRE_VERSION)
             writer.writeByte(MessageTag.STAMP)
             writer.writeString(programId)
             writer.writeString(cardId)
-            writer.writeInt32(serial)
+            writer.writeFixedBytes(stampId, STAMP_ID_LENGTH_BYTES)
             writer.writeInt64(issuedAt.toEpochMilli())
-            writer.writeFixedBytes(nonce, NONCE_LENGTH_BYTES)
         }
 
-        private fun randomNonce(): ByteArray =
-            ByteArray(NONCE_LENGTH_BYTES).also { SecureRandom().nextBytes(it) }
+        private fun randomStampId(): ByteArray =
+            ByteArray(STAMP_ID_LENGTH_BYTES).also { SecureRandom().nextBytes(it) }
     }
 }

@@ -21,15 +21,31 @@ data class IssuerProgramEntity(
     val createdAt: Long,
 )
 
-/** One customer's enrollment in one of this device's programs, from the issuer's side. */
+/**
+ * One customer's enrollment in one of this device's programs, from the
+ * issuer's side. Stamps are unordered and unconditionally minted (issuance
+ * is a trust matter for the issuer, like a paper card - SPEC/SPECS.md §6.2),
+ * so this only needs to record that the card exists, not any stamp count.
+ */
 @Entity(tableName = "issued_cards", primaryKeys = ["programId", "cardId"])
 data class IssuedCardEntity(
     val programId: String,
     val cardId: String,
     val collectorPublicKey: ByteArray,
-    val issuedSerialCount: Int,
-    val redeemedThroughSerial: Int,
     val createdAt: Long,
+)
+
+/**
+ * A stamp id this issuer has already redeemed for a card - the spent-set
+ * that prevents redeeming the same stamp twice (SPEC/SPECS.md §6.3/§7.1).
+ * [stampIdHex] is the hex encoding of a StampToken's raw stamp id bytes.
+ */
+@Entity(tableName = "redeemed_stamps", primaryKeys = ["programId", "cardId", "stampIdHex"])
+data class RedeemedStampEntity(
+    val programId: String,
+    val cardId: String,
+    val stampIdHex: String,
+    val redeemedAt: Long,
 )
 
 /** A card this device collects stamps on. See [IssuerProgramEntity] for the key-storage caveat. */
@@ -42,34 +58,19 @@ data class CollectorCardEntity(
     val threshold: Int,
     val reward: String,
     val collectorSeed: ByteArray,
-    val lastAcceptedSerial: Int,
-    val redeemedThroughSerial: Int,
     val createdAt: Long,
 )
 
 /**
- * One accepted, verified stamp. Kept around (wire bytes and all) until it's
+ * One accepted, verified stamp, keyed by its own unique stamp id rather
+ * than a position in a sequence. Kept (wire bytes and all) until it's
  * redeemed, since a redemption request must re-present the signed tokens,
- * not just the fact that they were once accepted.
+ * not just the fact that they were once accepted; deleted outright once
+ * redeemed rather than tracked as spent.
  */
-@Entity(tableName = "collector_stamps", primaryKeys = ["cardId", "serial"])
+@Entity(tableName = "collector_stamps", primaryKeys = ["cardId", "stampIdHex"])
 data class CollectorStampEntity(
     val cardId: String,
-    val serial: Int,
-    val stampTokenBytes: ByteArray,
-)
-
-/**
- * A stamp this device has minted for a card, from the issuer's side. Kept
- * (not just counted) so a stamp request from a collector who fell behind -
- * e.g. their previous scan of this exact stamp never went through - can be
- * answered by resending it rather than refusing outright; see
- * [io.fidelitycard.core.StampIssuance].
- */
-@Entity(tableName = "issued_stamps", primaryKeys = ["programId", "cardId", "serial"])
-data class IssuedStampEntity(
-    val programId: String,
-    val cardId: String,
-    val serial: Int,
+    val stampIdHex: String,
     val stampTokenBytes: ByteArray,
 )

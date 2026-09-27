@@ -1,7 +1,13 @@
 package io.fidelitycard.crypto.wire
 
-/** Protocol version tag written as the first byte of every message (SPEC/SPECS.md §5). */
-const val WIRE_VERSION = 1
+/**
+ * Protocol version tag written as the first byte of every message
+ * (SPEC/SPECS.md §5). Bumped to 2 when StampToken/RedemptionCertificate
+ * dropped ordered serials for unordered, uniquely-identified stamps - an
+ * incompatible field-layout change, so old and new bytes must never be
+ * silently misparsed as each other.
+ */
+const val WIRE_VERSION = 2
 
 /** Ed25519 signatures are always exactly 64 bytes. */
 const val SIGNATURE_LENGTH_BYTES = 64

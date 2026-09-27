@@ -1,27 +1,24 @@
 package io.fidelitycard.core
 
 /**
- * How far a card is toward its next reward. Progress is measured relative
- * to the last redemption, not to zero: a card that redeemed at serial 10
- * and has since earned two more stamps needs `threshold - 2` more, not
- * `threshold`.
+ * How far a card is toward its next reward. Stamps are unordered (no
+ * serial/sequence), so progress is simply how many currently-held,
+ * not-yet-redeemed stamps a card has - redeemed stamps are removed
+ * outright rather than tracked as "already counted".
  */
 @ConsistentCopyVisibility
 data class CardProgress private constructor(
-    val stampsSinceLastRedemption: Int,
+    val stampCount: Int,
     val threshold: Int,
 ) {
-    val remainingForNextReward: Int get() = (threshold - stampsSinceLastRedemption).coerceAtLeast(0)
-    val isRedeemable: Boolean get() = stampsSinceLastRedemption >= threshold
+    val remainingForNextReward: Int get() = (threshold - stampCount).coerceAtLeast(0)
+    val isRedeemable: Boolean get() = stampCount >= threshold
 
     companion object {
-        fun compute(highestAcceptedSerial: Int, redeemedThroughSerial: Int, threshold: Int): CardProgress {
+        fun compute(stampCount: Int, threshold: Int): CardProgress {
             require(threshold > 0) { "threshold must be positive, was $threshold" }
-            require(highestAcceptedSerial >= redeemedThroughSerial) {
-                "highestAcceptedSerial ($highestAcceptedSerial) cannot be behind " +
-                    "redeemedThroughSerial ($redeemedThroughSerial)"
-            }
-            return CardProgress(highestAcceptedSerial - redeemedThroughSerial, threshold)
+            require(stampCount >= 0) { "stampCount cannot be negative, was $stampCount" }
+            return CardProgress(stampCount, threshold)
         }
     }
 }

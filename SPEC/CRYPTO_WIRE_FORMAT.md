@@ -1,6 +1,6 @@
 # Crypto wire format
 
-Status: v1, implemented in `:crypto` (`io.fidelitycard.crypto`)
+Status: **v2**, implemented in `:crypto` (`io.fidelitycard.crypto`)
 
 This document is the byte-for-byte specification of the four signed message
 types in [SPEC/SPECS.md](SPECS.md) §5. It exists so a **non-Kotlin**
@@ -8,6 +8,12 @@ implementation (Swift, Python, Rust, whatever) can produce and verify
 byte-identical messages without reading the Kotlin source — only an
 Ed25519 library and this document. The Kotlin implementation is the
 reference implementation, not the spec; this file is the spec.
+
+> **v2 changed the Stamp Token and Redemption Certificate layouts**
+> (dropped ordered serials for unordered, uniquely-identified stamps — see
+> SPEC/SPECS.md §6.2/§7.1). The version byte was bumped so v1 and v2 bytes
+> can never be silently misparsed as each other; there is no compatibility
+> between them.
 
 ## 1. Design choice: fixed binary layout, not CBOR
 
@@ -42,7 +48,7 @@ Every message starts with:
 
 | Field | Type | Value |
 |---|---|---|
-| `version` | `byte` | `1` |
+| `version` | `byte` | `2` |
 | `type` | `byte` | see table below |
 
 | Message | `type` |
@@ -106,23 +112,36 @@ carries no key to bootstrap trust from).
 
 ### 5.3 Stamp Token (`type = 3`)
 
+Deliberately unordered: each stamp is an independent grant identified by a
+random `stamp_id`, not a position in a sequence (SPEC/SPECS.md §6.2).
+Preventing the same purchase from minting more than one stamp is treated
+as an issuer-side operational/trust matter, the same as a paper card — the
+protocol only cryptographically enforces that a stamp can't be forged and
+can't be redeemed twice (§5.4).
+
 | Order | Field | Type |
 |---|---|---|
 | 1 | `program_id` | `string` |
 | 2 | `card_id` | `string` |
-| 3 | `serial` | `int32` (must be > 0; the collector app enforces `serial == last_accepted + 1`, not this message type) |
+| 3 | `stamp_id` | `fixedBytes(16)`, random, chosen by the issuer at mint time |
 | 4 | `issued_at` | `int64` |
-| 5 | `nonce` | `fixedBytes(8)` |
 | — | `signature` | `fixedBytes(64)`, by the program's issuer key |
 
 ### 5.4 Redemption Certificate (`type = 4`)
 
+A receipt, not a range: since stamps are unordered there is no "through
+serial N" to certify. The collector already knows exactly which stamp ids
+it submitted and deletes those locally; the issuer's own record of which
+specific stamp ids are now spent (the double-redemption defense) lives in
+its own redeemed-stamps store, not in this certificate.
+
 | Order | Field | Type |
 |---|---|---|
 | 1 | `program_id` | `string` |
 | 2 | `card_id` | `string` |
-| 3 | `redeemed_through_serial` | `int32` (must be > 0) |
+| 3 | `redeemed_count` | `int32` (must be > 0) |
 | 4 | `redeemed_at` | `int64` |
+| 5 | `redemption_id` | `fixedBytes(16)`, random |
 | — | `signature` | `fixedBytes(64)`, by the program's issuer key |
 
 ## 6. Program ID derivation
@@ -170,28 +189,28 @@ collector public key (32 bytes):
 program_id: OUBSI7FFNROBZITIHPKRLX7HFL
 
 wire bytes (157 bytes):
-0101001a4f554253493746464e524f425a49544948504b524c583748464c03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8000c4a6f65277320436f666665650000000a000b4672656520636f66666565a01f4b6598f7030d6adca448fa56c6494319e4cbf1c8669866d746758913f3ddea270a028133c5165039383c8efda55c4f826431f559eb642960095c31382c02
+0201001a4f554253493746464e524f425a49544948504b524c583748464c03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8000c4a6f65277320436f666665650000000a000b4672656520636f66666565f8d100cbe2c683d690955cebf633890fa9c239cd54c3d8258e7cf2a828050345ac81bbb0a04c035941d5ea626f8958ccd5690754d2c7c61eb1b3c33333fc1904
 ```
 
 **Card Certificate** — `program_id` as above, `card_id = "11111111-1111-1111-1111-111111111111"`, `collector_public_key` as above, `issued_at = 1700000000000`:
 
 ```
 wire bytes (172 bytes):
-0102001a4f554253493746464e524f425a49544948504b524c583748464c002431313131313131312d313131312d313131312d313131312d3131313131313131313131310bbc346a57667c380120bd9c7fd7e51d2c5fdfea37cd2f5bf405b2c6bf6f2d780000018bcfe56800f5898365c41e739b5805935d288cb98cd5d7314e7a67bccb0080533b195a4c049eaa998ea85f97b2122d32441f9c75a45929ddcf3eba4cc264cfe8df8aedbd03
+0202001a4f554253493746464e524f425a49544948504b524c583748464c002431313131313131312d313131312d313131312d313131312d3131313131313131313131310bbc346a57667c380120bd9c7fd7e51d2c5fdfea37cd2f5bf405b2c6bf6f2d780000018bcfe56800ab4e332931464c265ea19130a2dd9b1b287ac4ed63e9c6960f64727cab119a87df60fead0b8126e6d6685d897980e8daa7a7cdd174ac9993eb9f2f2f11ad2d06
 ```
 
-**Stamp Token** — same `program_id`/`card_id`, `serial = 4`, `issued_at = 1700000000000`, `nonce = 00 01 02 03 04 05 06 07`:
+**Stamp Token** — same `program_id`/`card_id`, `stamp_id = 00 01 ... 0f` (16 bytes), `issued_at = 1700000000000`:
 
 ```
-wire bytes (152 bytes):
-0103001a4f554253493746464e524f425a49544948504b524c583748464c002431313131313131312d313131312d313131312d313131312d313131313131313131313131000000040000018bcfe56800000102030405060741ba741823d6e9e87d994ee377aa4587e50bf4171b79cc548d672bada6bd0a7aed1c8ba2c7354a885562c1cce8b98d6f8caf0b91868fccbdb50ef328b885d709
+wire bytes (156 bytes):
+0203001a4f554253493746464e524f425a49544948504b524c583748464c002431313131313131312d313131312d313131312d313131312d313131313131313131313131000102030405060708090a0b0c0d0e0f0000018bcfe56800ffaffc87d11cae25271f6fdac5e40aa2607289e82e4a0040ace36669d6f6a473316b4aa67a37d615161e671e50d04edc423311227542f57b86aa3243a7e5360f
 ```
 
-**Redemption Certificate** — same `program_id`/`card_id`, `redeemed_through_serial = 10`, `redeemed_at = 1700000000000`:
+**Redemption Certificate** — same `program_id`/`card_id`, `redeemed_count = 10`, `redeemed_at = 1700000000000`, `redemption_id = 01 02 ... 10` (16 bytes):
 
 ```
-wire bytes (144 bytes):
-0104001a4f554253493746464e524f425a49544948504b524c583748464c002431313131313131312d313131312d313131312d313131312d3131313131313131313131310000000a0000018bcfe56800733b800cbe3017b5679280934ca3f3703c900210b7ef7984f006d97544879f80879e35519b58ed7baefae2b2ac0e53462ac1b6c1d693443e0ce7d299f862a701
+wire bytes (160 bytes):
+0204001a4f554253493746464e524f425a49544948504b524c583748464c002431313131313131312d313131312d313131312d313131312d3131313131313131313131310000000a0000018bcfe568000102030405060708090a0b0c0d0e0f10193303e4d6e3e68552af9b7a8b3ac936d1a420955a561f1f08b0a0c9cf9c1d9d1b4f5bc924fd369ff7256ab63509eab6361988a091eed55af4bc7a91f700ea00
 ```
 
 A conforming implementation on any platform must: (a) reproduce these exact

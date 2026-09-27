@@ -12,27 +12,28 @@ class StampTokenTest {
 
     @Test
     fun `minting and parsing round trips every field`() {
-        val stamp = StampToken.mint(issuer, programId = "PROGRAM123", cardId = "card-1", serial = 4)
+        val stamp = StampToken.mint(issuer, programId = "PROGRAM123", cardId = "card-1")
 
         val parsed = StampToken.parseAndVerify(stamp.toWireBytes(), issuer.publicKey)
 
         assertEquals("PROGRAM123", parsed.programId)
         assertEquals("card-1", parsed.cardId)
-        assertEquals(4, parsed.serial)
+        assertEquals(stamp.stampId.toList(), parsed.stampId.toList())
         assertEquals(stamp.issuedAt, parsed.issuedAt)
     }
 
     @Test
-    fun `two stamps for the same card and serial still differ, because of the nonce`() {
-        val a = StampToken.mint(issuer, "PROGRAM123", "card-1", serial = 1)
-        val b = StampToken.mint(issuer, "PROGRAM123", "card-1", serial = 1)
+    fun `two stamps for the same card are still different tokens, because of the random stamp id`() {
+        val a = StampToken.mint(issuer, "PROGRAM123", "card-1")
+        val b = StampToken.mint(issuer, "PROGRAM123", "card-1")
 
+        assertNotEquals(a.stampId.toList(), b.stampId.toList())
         assertNotEquals(a.toWireBytes().toList(), b.toWireBytes().toList())
     }
 
     @Test
     fun `rejects a stamp not signed by the expected issuer`() {
-        val stamp = StampToken.mint(issuer, "PROGRAM123", "card-1", serial = 1)
+        val stamp = StampToken.mint(issuer, "PROGRAM123", "card-1")
         val someoneElse = SigningKeyPair.generate().publicKey
 
         assertThrows(InvalidSignatureException::class.java) {
@@ -41,8 +42,8 @@ class StampTokenTest {
     }
 
     @Test
-    fun `rejects a stamp whose serial was changed after signing`() {
-        val bytes = StampToken.mint(issuer, "PROGRAM123", "card-1", serial = 1).toWireBytes()
+    fun `rejects a stamp whose signed payload was altered`() {
+        val bytes = StampToken.mint(issuer, "PROGRAM123", "card-1").toWireBytes()
 
         val tampered = bytes.copyOf()
         val lastPayloadByteIndex = tampered.size - 1 - SIGNATURE_LENGTH_BYTES
@@ -54,9 +55,9 @@ class StampTokenTest {
     }
 
     @Test
-    fun `serial must be positive`() {
+    fun `stampId must be exactly STAMP_ID_LENGTH_BYTES`() {
         assertThrows(IllegalArgumentException::class.java) {
-            StampToken.mint(issuer, "PROGRAM123", "card-1", serial = 0)
+            StampToken.mint(issuer, "PROGRAM123", "card-1", stampId = ByteArray(4))
         }
     }
 }

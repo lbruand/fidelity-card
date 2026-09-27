@@ -29,7 +29,7 @@ fun StampProgressDots(progress: CardProgress, modifier: Modifier = Modifier) {
         modifier = modifier,
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        val filledCount = progress.stampsSinceLastRedemption.coerceAtMost(progress.threshold)
+        val filledCount = progress.stampCount.coerceAtMost(progress.threshold)
         repeat(progress.threshold) { index ->
             if (index < filledCount) {
                 Icon(

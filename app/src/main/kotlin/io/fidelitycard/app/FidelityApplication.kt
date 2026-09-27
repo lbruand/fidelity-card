@@ -24,7 +24,7 @@ class FidelityApplication : Application() {
     }
 
     val issuerRepository: IssuerRepository by lazy {
-        IssuerRepository(database.issuerProgramDao(), database.issuedCardDao(), database.issuedStampDao())
+        IssuerRepository(database.issuerProgramDao(), database.issuedCardDao(), database.redeemedStampDao())
     }
 
     val collectorRepository: CollectorRepository by lazy {

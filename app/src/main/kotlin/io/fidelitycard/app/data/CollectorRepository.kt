@@ -2,8 +2,6 @@ package io.fidelitycard.app.data
 
 import io.fidelitycard.app.qr.CustomerMessage
 import io.fidelitycard.core.CardProgress
-import io.fidelitycard.core.StampAcceptance
-import io.fidelitycard.core.StampLedger
 import io.fidelitycard.crypto.CardCertificate
 import io.fidelitycard.crypto.InvalidSignatureException
 import io.fidelitycard.crypto.ProgramManifest
@@ -37,6 +35,9 @@ sealed interface StampAcceptOutcome {
     data class Rejected(val reason: String) : StampAcceptOutcome
 }
 
+/** The specific stamp ids included in an outgoing redemption request, so the response can be applied precisely. */
+data class PendingRedemption(val stampIdHexes: List<String>, val requestBytes: ByteArray)
+
 sealed interface RedemptionAcceptOutcome {
     data object Accepted : RedemptionAcceptOutcome
     data class Rejected(val reason: String) : RedemptionAcceptOutcome
@@ -54,22 +55,10 @@ class CollectorRepository(
 ) {
 
     fun observeCards(): Flow<List<CardSummary>> =
-        cardDao.observeAll().map { entities -> entities.map { it.toSummary() } }
+        cardDao.observeAllWithStampCount().map { rows -> rows.map { it.toSummary() } }
 
     fun observeCard(cardId: String): Flow<CardSummary?> =
-        cardDao.observeById(cardId).map { it?.toSummary() }
-
-    /**
-     * Deletes a card and its stamps entirely, so the person can rejoin from
-     * scratch. The escape hatch for the one desync case that can't be
-     * repaired automatically (SPEC/SPECS.md - a card claiming more stamps
-     * than the issuer ever issued for it): irreversible, loses whatever
-     * progress this card had.
-     */
-    suspend fun leaveBusiness(cardId: String) {
-        stampDao.deleteAllForCard(cardId)
-        cardDao.deleteById(cardId)
-    }
+        cardDao.observeWithStampCount(cardId).map { it?.toSummary() }
 
     fun parseProgramQr(bytes: ByteArray): ProgramManifest? = try {
         ProgramManifest.parseAndVerify(bytes)
@@ -115,17 +104,15 @@ class CollectorRepository(
             threshold = pending.program.threshold,
             reward = pending.program.reward,
             collectorSeed = pending.collectorKeyPair.seed,
-            lastAcceptedSerial = 0,
-            redeemedThroughSerial = 0,
             createdAt = System.currentTimeMillis(),
         )
         cardDao.insert(entity)
-        return entity.toSummary()
+        return CardSummary(entity.cardId, entity.programId, entity.programName, entity.reward, CardProgress.compute(0, entity.threshold))
     }
 
     suspend fun buildStampRequest(cardId: String): ByteArray? {
         val card = cardDao.findById(cardId) ?: return null
-        return CustomerMessage.StampRequest(card.programId, cardId, card.lastAcceptedSerial).toWireBytes()
+        return CustomerMessage.StampRequest(card.programId, cardId).toWireBytes()
     }
 
     suspend fun acceptStampResponse(cardId: String, stampBytes: ByteArray): StampAcceptOutcome {
@@ -144,31 +131,25 @@ class CollectorRepository(
             return StampAcceptOutcome.Rejected("That stamp is for a different card")
         }
 
-        return when (val acceptance = StampLedger.evaluate(card.lastAcceptedSerial, stamp.serial)) {
-            is StampAcceptance.Rejected -> StampAcceptOutcome.Rejected(
-                "This stamp doesn't fit this card's history - ask the business to try again",
-            )
-            is StampAcceptance.Accepted -> {
-                stampDao.insert(CollectorStampEntity(cardId, stamp.serial, stampBytes))
-                cardDao.update(card.copy(lastAcceptedSerial = acceptance.newHighestAcceptedSerial))
-                StampAcceptOutcome.Accepted(
-                    CardProgress.compute(acceptance.newHighestAcceptedSerial, card.redeemedThroughSerial, card.threshold),
-                )
-            }
-        }
+        stampDao.insert(CollectorStampEntity(cardId, stamp.stampId.toHex(), stampBytes))
+        val newCount = stampDao.findAllForCard(cardId).size
+        return StampAcceptOutcome.Accepted(CardProgress.compute(newCount, card.threshold))
     }
 
-    suspend fun buildRedemptionRequest(cardId: String): ByteArray? {
+    suspend fun buildRedemptionRequest(cardId: String): PendingRedemption? {
         val card = cardDao.findById(cardId) ?: return null
-        val unredeemed = stampDao.findAllForCard(cardId)
-            .filter { it.serial > card.redeemedThroughSerial }
-            .sortedBy { it.serial }
-            .map { it.stampTokenBytes }
-        if (unredeemed.size < card.threshold) return null
-        return CustomerMessage.RedemptionRequest(card.programId, cardId, unredeemed).toWireBytes()
+        val held = stampDao.findAllForCard(cardId)
+        if (held.size < card.threshold) return null
+
+        val request = CustomerMessage.RedemptionRequest(card.programId, cardId, held.map { it.stampTokenBytes })
+        return PendingRedemption(held.map { it.stampIdHex }, request.toWireBytes())
     }
 
-    suspend fun acceptRedemptionResponse(cardId: String, certBytes: ByteArray): RedemptionAcceptOutcome {
+    suspend fun acceptRedemptionResponse(
+        cardId: String,
+        pending: PendingRedemption,
+        certBytes: ByteArray,
+    ): RedemptionAcceptOutcome {
         val card = cardDao.findById(cardId)
             ?: return RedemptionAcceptOutcome.Rejected("This card could not be found")
         val issuerPublicKey = VerifyingKey(card.issuerPublicKey)
@@ -184,16 +165,21 @@ class CollectorRepository(
             return RedemptionAcceptOutcome.Rejected("That confirmation is for a different card")
         }
 
-        stampDao.deleteRedeemed(cardId, cert.redeemedThroughSerial)
-        cardDao.update(card.copy(redeemedThroughSerial = cert.redeemedThroughSerial))
+        stampDao.deleteByIds(cardId, pending.stampIdHexes)
         return RedemptionAcceptOutcome.Accepted
     }
 
-    private fun CollectorCardEntity.toSummary() = CardSummary(
-        cardId = cardId,
-        programId = programId,
-        programName = programName,
-        reward = reward,
-        progress = CardProgress.compute(lastAcceptedSerial, redeemedThroughSerial, threshold),
-    )
+    /**
+     * Deletes a card and its stamps entirely, so the person can rejoin from
+     * scratch. The escape hatch for state that can't otherwise be repaired
+     * (a corrupted local database, a card mixed up between programs, etc):
+     * irreversible, loses whatever progress this card had.
+     */
+    suspend fun leaveBusiness(cardId: String) {
+        stampDao.deleteAllForCard(cardId)
+        cardDao.deleteById(cardId)
+    }
+
+    private fun CardWithStampCount.toSummary() =
+        CardSummary(cardId, programId, programName, reward, CardProgress.compute(stampCount, threshold))
 }

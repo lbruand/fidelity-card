@@ -43,14 +43,12 @@ sealed interface CustomerMessage {
     data class StampRequest(
         val programId: String,
         val cardId: String,
-        val lastAcceptedSerial: Int,
     ) : CustomerMessage {
         fun toWireBytes(): ByteArray =
             WireWriter()
                 .writeByte(Tag.STAMP_REQUEST)
                 .writeString(programId)
                 .writeString(cardId)
-                .writeInt32(lastAcceptedSerial)
                 .toByteArray()
     }
 
@@ -86,9 +84,8 @@ sealed interface CustomerMessage {
                 Tag.STAMP_REQUEST -> {
                     val programId = reader.readString()
                     val cardId = reader.readString()
-                    val lastAcceptedSerial = reader.readInt32()
                     reader.requireFullyConsumed()
-                    StampRequest(programId, cardId, lastAcceptedSerial)
+                    StampRequest(programId, cardId)
                 }
                 Tag.REDEMPTION_REQUEST -> {
                     val programId = reader.readString()
