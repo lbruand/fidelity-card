@@ -24,4 +24,5 @@ rootProject.name = "fidelity-card"
 
 include(":crypto")
 include(":core")
+include(":backup")
 include(":app")

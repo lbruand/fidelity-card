@@ -425,24 +425,34 @@ fidelity-card/
 ├── core/                       ← pure Kotlin/JVM library, NO Android deps
 │   ├── build.gradle.kts
 │   └── src/{main,test}/kotlin/...
-└── app/                        ← Android app, depends on :crypto and :core
+├── backup/                     ← pure Kotlin/JVM library, NO Android deps
+│   ├── build.gradle.kts
+│   └── src/{main,test}/kotlin/...
+└── app/                        ← Android app, depends on :crypto, :core, :backup
     ├── build.gradle.kts
     └── src/...
 ```
 
-`:crypto` and `:core` are both plain Kotlin/JVM modules, not Android
-library modules. Each must build and run its full test suite with a bare
-JDK and no Android SDK. This is what makes the "usable elsewhere, testable
-separately" goal (§0, user requirement) concrete rather than aspirational:
-`:app` consumes both as ordinary project dependencies
-(`implementation(project(":crypto"))`, `implementation(project(":core"))`),
-and nothing else in the repo is allowed to leak into either.
+`:crypto`, `:core` and `:backup` are all plain Kotlin/JVM modules, not
+Android library modules. Each must build and run its full test suite with
+a bare JDK and no Android SDK. This is what makes the "usable elsewhere,
+testable separately" goal (§0, user requirement) concrete rather than
+aspirational: `:app` consumes all three as ordinary project dependencies
+(`implementation(project(":crypto"))`, etc.), and nothing else in the repo
+is allowed to leak into any of them.
 
 `:core` holds the stamp/redemption business rules from §5.3 and §7.1
 (`CardProgress`, `RedemptionValidator`) as plain functions over primitives
 (stamp counts, stamp id strings) — deliberately with no dependency on
 `:crypto` at all, so these rules stay checkable in complete isolation from
 the wire format or any cryptographic concern.
+
+`:backup` holds the encrypted backup format (BACKUP_FORMAT.md, §11 "Backup
+& restore") - snapshot encoding and passphrase-based AES-GCM encryption.
+It depends on `:crypto` only for `WireWriter`/`WireReader` (generic binary
+framing, not the stamp-protocol message types), since a backup file is a
+distinct concern from the QR wire format and deliberately isn't layered
+into `:crypto`'s own message set.
 
 ### 10.2 Dependency management
 
@@ -460,6 +470,9 @@ the wire format or any cryptographic concern.
   serialization-order behavior.
 - `:core` has no runtime dependency at all (not even on `:crypto`), just
   JUnit 5 for tests — see §10.1.
+- `:backup` depends only on `:crypto` (for `WireWriter`/`WireReader`) plus
+  JUnit 5 for tests. Its encryption (§3, BACKUP_FORMAT.md) uses standard
+  `javax.crypto`/`java.security` JCE - no new dependency for that at all.
 - `:app` dependencies: AndroidX, Jetpack Compose, Room, ZXing
   (`zxing-android-embedded`, not ML Kit — see §8). No Google Play Services
   anywhere in the tree.
@@ -474,14 +487,16 @@ the wire format or any cryptographic concern.
 Two independent GitHub Actions workflows, split so the pure-JVM modules'
 CI never needs an Android SDK or emulator:
 
-- **`jvm-ci.yml`** — triggers on changes under `crypto/**` or `core/**`.
-  Just `actions/setup-java` + `./gradlew :crypto:test :core:test`. Runs on
-  JDK 17 and 21 as a cheap, continuous check on the "portable/reusable
-  elsewhere" claim — `:crypto` and `:core` run together here since both
-  are plain Kotlin/JVM and neither needs anything the other pulls in.
-- **`app-ci.yml`** — triggers on changes under `app/**`, `crypto/**` or
-  `core/**` (the app depends on both). Sets up the Android SDK, runs
-  `./gradlew :app:assembleDebug :app:testDebugUnitTest :app:lint`.
+- **`jvm-ci.yml`** — triggers on changes under `crypto/**`, `core/**` or
+  `backup/**`. Just `actions/setup-java` + `./gradlew :crypto:test
+  :core:test :backup:test`. Runs on JDK 17 and 21 as a cheap, continuous
+  check on the "portable/reusable elsewhere" claim — all three run
+  together here since all are plain Kotlin/JVM and none needs anything
+  Android.
+- **`app-ci.yml`** — triggers on changes under `app/**`, `crypto/**`,
+  `core/**` or `backup/**` (the app depends on all three). Sets up the
+  Android SDK, runs `./gradlew :app:assembleDebug :app:testDebugUnitTest
+  :app:lint`.
 - A dependency-tree guardrail step (`./gradlew :app:dependencies` checked
   against a known Play-Services/tracker denylist) to catch an accidental
   F-Droid-disqualifying dependency before it lands.
@@ -495,9 +510,11 @@ CI never needs an Android SDK or emulator:
 
 ## 11. Open questions / future work
 
-- **Backup & restore**: losing a phone currently means losing all
-  collector cards and issuer program keys. Needs a spec for encrypted
-  export/import (e.g. to a file the user controls) before v1 ships.
+- ~~**Backup & restore**~~ — resolved: full-database encrypted export/import,
+  specified in [BACKUP_FORMAT.md](BACKUP_FORMAT.md) and implemented in the
+  `:backup` module (§10.1) plus `BackupRepository`/`BackupScreen` in `:app`.
+  AES-256-GCM with a PBKDF2-HMAC-SHA256 passphrase-derived key; a restore
+  is a full replace, not a merge.
 - **Optional sync service**: for issuers running multiple till devices, a
   minimal self-hostable relay that just exchanges Stamp/Redemption
   Certificates between an issuer's own devices (not a trust party — it

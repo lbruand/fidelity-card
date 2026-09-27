@@ -2,6 +2,7 @@ package io.fidelitycard.app
 
 import android.app.Application
 import androidx.room.Room
+import io.fidelitycard.app.data.BackupRepository
 import io.fidelitycard.app.data.CollectorRepository
 import io.fidelitycard.app.data.FidelityCardDatabase
 import io.fidelitycard.app.data.IssuerRepository
@@ -16,9 +17,9 @@ class FidelityApplication : Application() {
 
     private val database: FidelityCardDatabase by lazy {
         Room.databaseBuilder(this, FidelityCardDatabase::class.java, "fidelity-card.db")
-            // Pre-release, no backup/restore yet (SPEC/SPECS.md §11) and no
-            // real user data to protect: wiping on a schema bump is fine for
-            // now. Replace with a real Migration before any actual release.
+            // Pre-release, still no real user base to protect: wiping on a
+            // schema bump is fine for now. Replace with a real Migration
+            // before any actual release (SPEC/SPECS.md §11, TODO.md).
             .fallbackToDestructiveMigration(true)
             .build()
     }
@@ -29,5 +30,9 @@ class FidelityApplication : Application() {
 
     val collectorRepository: CollectorRepository by lazy {
         CollectorRepository(database.collectorCardDao(), database.collectorStampDao())
+    }
+
+    val backupRepository: BackupRepository by lazy {
+        BackupRepository(database)
     }
 }

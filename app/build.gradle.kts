@@ -48,6 +48,7 @@ room {
 dependencies {
     implementation(project(":crypto"))
     implementation(project(":core"))
+    implementation(project(":backup"))
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)

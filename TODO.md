@@ -9,10 +9,14 @@ TODO
 
 ## From the spec (SPEC/SPECS.md)
 
- * [ ] Backup & restore: losing a phone currently loses every collector card and
-       issuer program key, with no way back. Needs an encrypted export/import
-       format (SPEC §11) — this is the same thing as the item below.
- * [ ] export/import of the config of the apps to save.
+ * [x] Backup & restore / export-import of the config: done. Full-database
+       encrypted export/import - AES-256-GCM, PBKDF2-HMAC-SHA256
+       passphrase-derived key, format specified in `SPEC/BACKUP_FORMAT.md`
+       and implemented in a new `:backup` module (pure Kotlin/JVM, TDD'd)
+       plus `BackupRepository`/`BackupScreen` in `:app` (reachable from
+       Home). Restore is a full replace, not a merge - simplest safe
+       behavior given there's no conflict-resolution model between two
+       independently-evolved states.
  * [ ] Store issuer/collector key material in the Android Keystore instead of as
        raw bytes in Room. Known, documented gap: Ed25519 support in AndroidKeyStore
        only arrived in API 33, above this app's minSdk 26 (SPEC §7).
@@ -42,10 +46,11 @@ TODO
             verified against that ledger instead of re-checking signatures.
             ~10x smaller, full cryptographic certainty (no sampling). Trade-off:
             redemption now depends on the issuer device's own local state
-            surviving - same shape as the existing §7.4 multi-till limitation,
-            and why this should land after backup & restore, not before. Keep
-            full-signature redemption as the default/resilient path for normal
-            thresholds; this becomes an explicit "large threshold" mode.
+            surviving - same shape as the existing §7.4 multi-till limitation.
+            Backup & restore is done now, so that blocker is cleared; still
+            not started. Keep full-signature redemption as the
+            default/resilient path for normal thresholds; this becomes an
+            explicit "large threshold" mode.
          3. Considered and rejected as the primary fix: a probabilistic
             commit-then-spot-check scheme (Merkle root + random sample of k
             stamps). The math doesn't work for the threat that matters - hiding

@@ -6,6 +6,7 @@ on:
     paths:
       - "crypto/**"
       - "core/**"
+      - "backup/**"
       - "gradle/**"
       - "build.gradle.kts"
       - "settings.gradle.kts"
@@ -14,6 +15,7 @@ on:
     paths:
       - "crypto/**"
       - "core/**"
+      - "backup/**"
       - "gradle/**"
       - "build.gradle.kts"
       - "settings.gradle.kts"
@@ -34,5 +36,5 @@ jobs:
           distribution: temurin
           java-version: ${{ matrix.java }}
 
-      - name: Run crypto and core module tests
-        run: ./gradlew :crypto:test :core:test --no-daemon
+      - name: Run crypto, core and backup module tests
+        run: ./gradlew :crypto:test :core:test :backup:test --no-daemon

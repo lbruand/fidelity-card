@@ -10,11 +10,20 @@ interface IssuerProgramDao {
     @Insert
     suspend fun insert(program: IssuerProgramEntity)
 
+    @Insert
+    suspend fun insertAll(programs: List<IssuerProgramEntity>)
+
     @Query("SELECT * FROM issuer_programs ORDER BY createdAt DESC")
     fun observeAll(): Flow<List<IssuerProgramEntity>>
 
+    @Query("SELECT * FROM issuer_programs")
+    suspend fun getAll(): List<IssuerProgramEntity>
+
     @Query("SELECT * FROM issuer_programs WHERE programId = :programId")
     suspend fun findById(programId: String): IssuerProgramEntity?
+
+    @Query("DELETE FROM issuer_programs")
+    suspend fun deleteAll()
 }
 
 @Dao
@@ -22,8 +31,17 @@ interface IssuedCardDao {
     @Insert
     suspend fun insert(card: IssuedCardEntity)
 
+    @Insert
+    suspend fun insertAll(cards: List<IssuedCardEntity>)
+
     @Query("SELECT * FROM issued_cards WHERE programId = :programId AND cardId = :cardId")
     suspend fun find(programId: String, cardId: String): IssuedCardEntity?
+
+    @Query("SELECT * FROM issued_cards")
+    suspend fun getAll(): List<IssuedCardEntity>
+
+    @Query("DELETE FROM issued_cards")
+    suspend fun deleteAll()
 }
 
 @Dao
@@ -36,6 +54,12 @@ interface RedeemedStampDao {
             "AND stampIdHex IN (:stampIdHexes)",
     )
     suspend fun findAlreadyRedeemed(programId: String, cardId: String, stampIdHexes: List<String>): List<String>
+
+    @Query("SELECT * FROM redeemed_stamps")
+    suspend fun getAll(): List<RedeemedStampEntity>
+
+    @Query("DELETE FROM redeemed_stamps")
+    suspend fun deleteAll()
 }
 
 /**
@@ -69,6 +93,9 @@ interface CollectorCardDao {
     @Insert
     suspend fun insert(card: CollectorCardEntity)
 
+    @Insert
+    suspend fun insertAll(cards: List<CollectorCardEntity>)
+
     @Query("$CARD_WITH_STAMP_COUNT_QUERY GROUP BY collector_cards.cardId ORDER BY collector_cards.createdAt DESC")
     fun observeAllWithStampCount(): Flow<List<CardWithStampCount>>
 
@@ -78,8 +105,14 @@ interface CollectorCardDao {
     @Query("SELECT * FROM collector_cards WHERE cardId = :cardId")
     suspend fun findById(cardId: String): CollectorCardEntity?
 
+    @Query("SELECT * FROM collector_cards")
+    suspend fun getAll(): List<CollectorCardEntity>
+
     @Query("DELETE FROM collector_cards WHERE cardId = :cardId")
     suspend fun deleteById(cardId: String)
+
+    @Query("DELETE FROM collector_cards")
+    suspend fun deleteAll()
 }
 
 @Dao
@@ -87,12 +120,21 @@ interface CollectorStampDao {
     @Insert
     suspend fun insert(stamp: CollectorStampEntity)
 
+    @Insert
+    suspend fun insertAll(stamps: List<CollectorStampEntity>)
+
     @Query("SELECT * FROM collector_stamps WHERE cardId = :cardId")
     suspend fun findAllForCard(cardId: String): List<CollectorStampEntity>
+
+    @Query("SELECT * FROM collector_stamps")
+    suspend fun getAll(): List<CollectorStampEntity>
 
     @Query("DELETE FROM collector_stamps WHERE cardId = :cardId AND stampIdHex IN (:stampIdHexes)")
     suspend fun deleteByIds(cardId: String, stampIdHexes: List<String>)
 
     @Query("DELETE FROM collector_stamps WHERE cardId = :cardId")
     suspend fun deleteAllForCard(cardId: String)
+
+    @Query("DELETE FROM collector_stamps")
+    suspend fun deleteAll()
 }

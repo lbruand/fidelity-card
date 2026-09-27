@@ -18,6 +18,13 @@ class SigningKeyPairTest {
     }
 
     @Test
+    fun `SEED_LENGTH_BYTES matches the actual seed size`() {
+        val keyPair = SigningKeyPair.generate()
+
+        assertEquals(SigningKeyPair.SEED_LENGTH_BYTES, keyPair.seed.size)
+    }
+
+    @Test
     fun `two generated key pairs are different`() {
         val a = SigningKeyPair.generate()
         val b = SigningKeyPair.generate()

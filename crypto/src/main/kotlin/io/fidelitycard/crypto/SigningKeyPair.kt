@@ -31,7 +31,7 @@ class SigningKeyPair private constructor(
     }
 
     companion object {
-        private const val SEED_LENGTH_BYTES = 32
+        const val SEED_LENGTH_BYTES = 32
 
         fun generate(): SigningKeyPair {
             val seed = ByteArray(SEED_LENGTH_BYTES)

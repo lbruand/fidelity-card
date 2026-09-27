@@ -7,6 +7,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import io.fidelitycard.app.backup.BackupScreen
 import io.fidelitycard.app.collector.CardDetailScreen
 import io.fidelitycard.app.collector.CardListScreen
 import io.fidelitycard.app.collector.JoinBusinessScreen
@@ -18,6 +19,7 @@ import io.fidelitycard.app.issuer.CreateBusinessScreen
 
 private object Routes {
     const val HOME = "home"
+    const val BACKUP = "backup"
     const val BUSINESS_LIST = "issuer/businesses"
     const val CREATE_BUSINESS = "issuer/businesses/create"
     const val BUSINESS_DETAIL = "issuer/businesses/{programId}"
@@ -42,7 +44,11 @@ fun FidelityCardApp() {
             HomeScreen(
                 onOpenBusinesses = { navController.navigate(Routes.BUSINESS_LIST) },
                 onOpenCards = { navController.navigate(Routes.CARD_LIST) },
+                onOpenBackup = { navController.navigate(Routes.BACKUP) },
             )
+        }
+        composable(Routes.BACKUP) {
+            BackupScreen(onBack = { navController.popBackStack() })
         }
 
         composable(Routes.BUSINESS_LIST) {
