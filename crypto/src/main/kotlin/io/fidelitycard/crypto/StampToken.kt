@@ -34,8 +34,25 @@ class StampToken private constructor(
             .writeFixedBytes(signature, SIGNATURE_LENGTH_BYTES)
             .toByteArray()
 
+    /**
+     * `stamp_id || issued_at || signature`, without `program_id`/`card_id` -
+     * for batching many stamps for the same card into one redemption request
+     * without repeating fields that are identical across the whole batch
+     * (SPEC/SPECS.md §6.3/§11). Pairs with [parseAndVerifyCompactProof],
+     * which the caller must supply the correct shared `program_id`/`card_id`
+     * to - that's what a full [toWireBytes] token would otherwise carry
+     * inline, and its absence here is exactly the space saving.
+     */
+    fun toCompactProofBytes(): ByteArray =
+        WireWriter()
+            .writeFixedBytes(stampId, STAMP_ID_LENGTH_BYTES)
+            .writeInt64(issuedAt.toEpochMilli())
+            .writeFixedBytes(signature, SIGNATURE_LENGTH_BYTES)
+            .toByteArray()
+
     companion object {
         const val STAMP_ID_LENGTH_BYTES = 16
+        const val COMPACT_PROOF_LENGTH_BYTES = STAMP_ID_LENGTH_BYTES + 8 + SIGNATURE_LENGTH_BYTES
 
         fun mint(
             issuer: SigningKeyPair,
@@ -63,6 +80,32 @@ class StampToken private constructor(
 
             val programId = reader.readString()
             val cardId = reader.readString()
+            val stampId = reader.readFixedBytes(STAMP_ID_LENGTH_BYTES)
+            val issuedAt = Instant.ofEpochMilli(reader.readInt64())
+            val signature = reader.readFixedBytes(SIGNATURE_LENGTH_BYTES)
+            reader.requireFullyConsumed()
+
+            val payload = WireWriter()
+                .apply { writeSignedPayload(this, programId, cardId, stampId, issuedAt) }
+                .toByteArray()
+            if (!issuerPublicKey.verify(payload, signature)) {
+                throw InvalidSignatureException("StampToken signature does not verify against the given issuer key")
+            }
+
+            return StampToken(programId, cardId, stampId, issuedAt, signature)
+        }
+
+        /** Pairs with [StampToken.toCompactProofBytes] - see that method's doc for why `programId`/`cardId` are separate parameters. */
+        fun parseAndVerifyCompactProof(
+            compactProofBytes: ByteArray,
+            programId: String,
+            cardId: String,
+            issuerPublicKey: VerifyingKey,
+        ): StampToken {
+            require(compactProofBytes.size == COMPACT_PROOF_LENGTH_BYTES) {
+                "Compact proof must be $COMPACT_PROOF_LENGTH_BYTES bytes, was ${compactProofBytes.size}"
+            }
+            val reader = WireReader(compactProofBytes)
             val stampId = reader.readFixedBytes(STAMP_ID_LENGTH_BYTES)
             val issuedAt = Instant.ofEpochMilli(reader.readInt64())
             val signature = reader.readFixedBytes(SIGNATURE_LENGTH_BYTES)

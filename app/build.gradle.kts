@@ -29,6 +29,16 @@ android {
     kotlin {
         jvmToolchain(17)
     }
+
+    testOptions {
+        unitTests {
+            // Repository classes call android.util.Log directly (not mocked
+            // in plain JVM unit tests, which throws by default) - return a
+            // default (0/false/null) instead of crashing, since these are
+            // just log calls, not something a unit test should assert on.
+            isReturnDefaultValues = true
+        }
+    }
 }
 
 room {

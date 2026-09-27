@@ -47,6 +47,16 @@ class WireFormatTestVectorsTest {
     }
 
     @Test
+    fun `compact stamp proof matches the published vector`() {
+        val stamp = StampToken.mint(issuer, programId, cardId, issuedAt = fixedInstant, stampId = stampId)
+
+        assertHexEquals(
+            "000102030405060708090a0b0c0d0e0f0000018bcfe568004f7dd4988cc61a5ac52dce5a32cd0bdfcf193909d77e079aa9da0dfa5a27b04fda16d160a8b38d15f393b919691b886982b5e86264f5ccbee9d24b434f78a001",
+            stamp.toCompactProofBytes(),
+        )
+    }
+
+    @Test
     fun `redemption certificate matches the published vector`() {
         val redemption = RedemptionCertificate.issue(
             issuer, programId, cardId, redeemedCount = 10, redeemedAt = fixedInstant, redemptionId = redemptionId,

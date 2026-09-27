@@ -1,8 +1,12 @@
 package io.fidelitycard.app.qr
 
+import android.util.Log
+import io.fidelitycard.crypto.StampToken
 import io.fidelitycard.crypto.wire.MalformedMessageException
 import io.fidelitycard.crypto.wire.WireReader
 import io.fidelitycard.crypto.wire.WireWriter
+
+private const val LOG_TAG = "CustomerMessage"
 
 private object Tag {
     const val STAMP_REQUEST = 101
@@ -35,18 +39,27 @@ sealed interface CustomerMessage {
                 .toByteArray()
     }
 
+    /**
+     * [compactStampProofs] are each [StampToken.COMPACT_PROOF_LENGTH_BYTES]
+     * (`stamp_id || issued_at || signature`, no `program_id`/`card_id`) -
+     * every stamp in one redemption is for this same [programId]/[cardId],
+     * so repeating those inside each one would be pure waste. This is what
+     * keeps large-threshold redemptions inside one scannable QR
+     * (SPEC/SPECS.md §6.3/§11); see `io.fidelitycard.crypto.StampToken`
+     * §5.2.1 in CRYPTO_WIRE_FORMAT.md for the exact byte layout this saves.
+     */
     data class RedemptionRequest(
         val programId: String,
         val cardId: String,
-        val stampTokenWireBytes: List<ByteArray>,
+        val compactStampProofs: List<ByteArray>,
     ) : CustomerMessage {
         fun toWireBytes(): ByteArray {
             val writer = WireWriter()
                 .writeByte(Tag.REDEMPTION_REQUEST)
                 .writeString(programId)
                 .writeString(cardId)
-                .writeInt32(stampTokenWireBytes.size)
-            stampTokenWireBytes.forEach { writer.writeVarBytes(it) }
+                .writeInt32(compactStampProofs.size)
+            compactStampProofs.forEach { writer.writeFixedBytes(it, StampToken.COMPACT_PROOF_LENGTH_BYTES) }
             return writer.toByteArray()
         }
     }
@@ -66,15 +79,20 @@ sealed interface CustomerMessage {
                     val programId = reader.readString()
                     val cardId = reader.readString()
                     val count = reader.readInt32()
-                    val stamps = (0 until count).map { reader.readVarBytes() }
+                    val proofs = (0 until count).map { reader.readFixedBytes(StampToken.COMPACT_PROOF_LENGTH_BYTES) }
                     reader.requireFullyConsumed()
-                    RedemptionRequest(programId, cardId, stamps)
+                    RedemptionRequest(programId, cardId, proofs)
                 }
                 else -> throw MalformedMessageException("Unknown customer message tag $tag")
             }
         } catch (e: MalformedMessageException) {
+            // Routine: scanning any unrelated QR code (or the wrong side of
+            // this app's own protocol) lands here every time, not a bug -
+            // debug level, not a warning.
+            Log.d(LOG_TAG, "Scanned bytes are not a recognized customer message", e)
             null
         } catch (e: IllegalArgumentException) {
+            Log.d(LOG_TAG, "Scanned bytes are not a recognized customer message", e)
             null
         }
     }

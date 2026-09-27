@@ -117,6 +117,31 @@ can't be redeemed twice (§5.3).
 | 4 | `issued_at` | `int64` |
 | — | `signature` | `fixedBytes(64)`, by the program's issuer key |
 
+#### 5.2.1 Compact Stamp Proof (batched redemption, no `type`/`version` byte of its own)
+
+Not a standalone message — a **fragment** used only inside a Redemption
+Request (an app-level container, not part of this crypto wire format
+itself; see SPEC/SPECS.md §6.3), to redeem many stamps for one card
+without repeating `program_id`/`card_id` inside every single one of them.
+It carries exactly the part of a Stamp Token that a full `type = 2`
+message doesn't already say once, at the container level:
+
+| Order | Field | Type |
+|---|---|---|
+| 1 | `stamp_id` | `fixedBytes(16)` |
+| 2 | `issued_at` | `int64` |
+| 3 | `signature` | `fixedBytes(64)` |
+
+Total: exactly 88 bytes, always — no length prefix needed, since a
+container that already knows how many stamps it holds can just read
+`count × 88` contiguous bytes. To verify one, a reader reconstructs the
+exact same `signed_payload` a full Stamp Token would have had — `version
+|| type=2 || program_id || card_id || stamp_id || issued_at` — using the
+`program_id`/`card_id` supplied by the surrounding container, then checks
+the signature against it exactly as in §5.2. Supplying the wrong
+`program_id`/`card_id` here isn't a way to bypass anything: it reconstructs
+different bytes than were actually signed, so verification simply fails.
+
 ### 5.3 Redemption Certificate (`type = 3`)
 
 A receipt, not a range: since stamps are unordered there is no "through
@@ -181,6 +206,15 @@ wire bytes (157 bytes):
 ```
 wire bytes (156 bytes):
 0302001a4f554253493746464e524f425a49544948504b524c583748464c002431313131313131312d313131312d313131312d313131312d313131313131313131313131000102030405060708090a0b0c0d0e0f0000018bcfe568004f7dd4988cc61a5ac52dce5a32cd0bdfcf193909d77e079aa9da0dfa5a27b04fda16d160a8b38d15f393b919691b886982b5e86264f5ccbee9d24b434f78a001
+```
+
+**Compact Stamp Proof** (§5.2.1) for that same Stamp Token — always exactly
+the wire bytes above's trailing 88 bytes (`stamp_id || issued_at ||
+signature`), since `program_id`/`card_id` are what got stripped out:
+
+```
+compact proof (88 bytes):
+000102030405060708090a0b0c0d0e0f0000018bcfe568004f7dd4988cc61a5ac52dce5a32cd0bdfcf193909d77e079aa9da0dfa5a27b04fda16d160a8b38d15f393b919691b886982b5e86264f5ccbee9d24b434f78a001
 ```
 
 **Redemption Certificate** — same `program_id`/`card_id`, `redeemed_count = 10`, `redeemed_at = 1700000000000`, `redemption_id = 01 02 ... 10` (16 bytes):

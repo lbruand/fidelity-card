@@ -290,11 +290,14 @@ operational trust matter, not a protocol check).
 ```
 Collector device                       Issuer device
   [shows "Redemption Request QR"]  -->   scans it
-  { card_id, stamps: [id_1..id_N] }
-  (N >= threshold, all currently        verifies every token's sig,
-   held, unredeemed stamps)             verifies program_id/card_id match,
-                                        verifies no id repeats within this
-                                        submission and none is in its own
+  { program_id, card_id,
+    stamp_proofs: [proof_1..proof_N] }
+  (N >= threshold, all currently        for each proof, reconstructs the
+   held, unredeemed stamps)             full signed Stamp Token using the
+                                        request's shared program_id/card_id
+                                        (§5.2.1) and verifies it, verifies
+                                        no id repeats within this submission
+                                        and none is in its own
                                         redeemed-stamp-ids store
                                         issues Redemption Certificate,
                                         records these ids as redeemed
@@ -303,11 +306,19 @@ Collector device                       Issuer device
   stamp ids it submitted
 ```
 
-Note: a Redemption Request QR embedding many stamp tokens can get large.
-v1 targets thresholds in the 5–20 range, which stays within a single QR's
-practical payload (a few KB at low error-correction is fine for ~20 compact
-JSON/CBOR tokens); if larger thresholds are needed later, animated
-(fragmented) QR sequences are the fallback (see §11).
+Each `proof` is a **Compact Stamp Proof** (CRYPTO_WIRE_FORMAT.md §5.2.1):
+`stamp_id || issued_at || signature`, 88 bytes, with `program_id`/`card_id`
+stripped out since every stamp in one redemption shares the same two
+values — repeating them per stamp would be pure waste. This alone cuts
+per-stamp cost from ~156 bytes (a full self-contained Stamp Token) to 88,
+roughly doubling how large a threshold fits in one scannable QR before
+needing anything fancier (v1 targets 5–20; this comfortably covers up to
+~30–40). For thresholds meaningfully larger than that, see the "Large
+reward thresholds" item in `TODO.md` for the follow-up plan (an
+issuer-side ledger of minted stamp ids, letting redemption send bare
+16-byte ids instead of 88-byte proofs) — deliberately *not* an
+animated/fragmented QR sequence, which trades a real scanning-UX cost for
+a problem that has a cheaper cryptographic fix.
 
 ## 7. Data model (local storage)
 
@@ -494,8 +505,13 @@ CI never needs an Android SDK or emulator:
 - **Revocation**: what happens if an issuer needs to revoke a card (fraud)
   or a whole program (going out of business)? Needs a signed revocation
   message type.
-- **Large thresholds**: fragmented/animated QR sequences if thresholds
-  much larger than ~20 stamps are needed.
+- **Large thresholds**: Compact Stamp Proofs (§6.3/CRYPTO_WIRE_FORMAT.md
+  §5.2.1) push the comfortable ceiling to ~30-40 in one QR; for
+  meaningfully larger thresholds, see `TODO.md` for the planned follow-up
+  (an issuer-side ledger of minted stamp ids, so redemption can send bare
+  ids instead of signed proofs) — animated/fragmented QR sequences were
+  considered and rejected as the primary fix, for the real scanning-UX
+  cost they add.
 - **NFC as a second transport**: token formats in §5 are transport-agnostic
   (they're just signed byte blobs); NFC could reuse them unchanged.
 - ~~**Token encoding**~~ — resolved: a fixed binary layout, specified in

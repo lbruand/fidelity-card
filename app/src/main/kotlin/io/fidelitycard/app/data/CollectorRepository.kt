@@ -1,5 +1,6 @@
 package io.fidelitycard.app.data
 
+import android.util.Log
 import io.fidelitycard.app.qr.CustomerMessage
 import io.fidelitycard.core.CardProgress
 import io.fidelitycard.crypto.InvalidSignatureException
@@ -11,6 +12,8 @@ import io.fidelitycard.crypto.wire.MalformedMessageException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import java.util.UUID
+
+private const val TAG = "CollectorRepository"
 
 data class CardSummary(
     val cardId: String,
@@ -61,8 +64,14 @@ class CollectorRepository(
     fun parseProgramQr(bytes: ByteArray): ProgramManifest? = try {
         ProgramManifest.parseAndVerify(bytes)
     } catch (e: InvalidSignatureException) {
+        // A business's own Program Manifest failing to self-verify is
+        // unusual (unlike a stamp/redemption, there's no "wrong key" case
+        // here - it's self-signed) and worth a real log line.
+        Log.w(TAG, "Scanned program QR did not verify", e)
         null
     } catch (e: MalformedMessageException) {
+        // Routine: this is also where scanning any unrelated QR code lands.
+        Log.d(TAG, "Scanned bytes are not a valid program manifest", e)
         null
     }
 
@@ -95,8 +104,10 @@ class CollectorRepository(
         val stamp = try {
             StampToken.parseAndVerify(stampBytes, issuerPublicKey)
         } catch (e: InvalidSignatureException) {
+            Log.w(TAG, "Stamp response did not verify against this card's pinned issuer key (card=$cardId)", e)
             return StampAcceptOutcome.Rejected("That code isn't a valid stamp from this business")
         } catch (e: MalformedMessageException) {
+            Log.w(TAG, "Stamp response was malformed (card=$cardId)", e)
             return StampAcceptOutcome.Rejected("That code isn't a valid stamp from this business")
         }
         if (stamp.programId != card.programId || stamp.cardId != card.cardId) {
@@ -110,11 +121,37 @@ class CollectorRepository(
 
     suspend fun buildRedemptionRequest(cardId: String): PendingRedemption? {
         val card = cardDao.findById(cardId) ?: return null
+        val issuerPublicKey = VerifyingKey(card.issuerPublicKey)
         val held = stampDao.findAllForCard(cardId)
         if (held.size < card.threshold) return null
 
-        val request = CustomerMessage.RedemptionRequest(card.programId, cardId, held.map { it.stampTokenBytes })
-        return PendingRedemption(held.map { it.stampIdHex }, request.toWireBytes())
+        // Re-verifying here (cheap - one Ed25519 check per stamp) doubles as a
+        // consistency check on our own stored bytes, and lets us compute each
+        // stamp's compact proof (io.fidelitycard.crypto.StampToken §5.2.1),
+        // which strips the program_id/card_id every stamp in this batch
+        // shares, instead of sending full self-contained tokens - the fix for
+        // large-threshold redemptions outgrowing one QR (SPEC/SPECS.md §6.3).
+        val proofs = held.mapNotNull { entity ->
+            try {
+                val token = StampToken.parseAndVerify(entity.stampTokenBytes, issuerPublicKey)
+                entity.stampIdHex to token.toCompactProofBytes()
+            } catch (e: InvalidSignatureException) {
+                // This is our own previously-accepted stamp failing to
+                // re-verify - should never happen. Silently dropping it would
+                // just look like "not enough stamps yet" with no clue why, so
+                // log loudly: this is a real bug (or a corrupted database),
+                // not routine input.
+                Log.e(TAG, "A stored stamp failed to re-verify while building a redemption request (card=$cardId, stampId=${entity.stampIdHex})", e)
+                null
+            } catch (e: MalformedMessageException) {
+                Log.e(TAG, "A stored stamp's bytes were malformed while building a redemption request (card=$cardId, stampId=${entity.stampIdHex})", e)
+                null
+            }
+        }
+        if (proofs.size < card.threshold) return null
+
+        val request = CustomerMessage.RedemptionRequest(card.programId, cardId, proofs.map { it.second })
+        return PendingRedemption(proofs.map { it.first }, request.toWireBytes())
     }
 
     suspend fun acceptRedemptionResponse(
@@ -129,8 +166,10 @@ class CollectorRepository(
         val cert = try {
             RedemptionCertificate.parseAndVerify(certBytes, issuerPublicKey)
         } catch (e: InvalidSignatureException) {
+            Log.w(TAG, "Redemption confirmation did not verify against this card's pinned issuer key (card=$cardId)", e)
             return RedemptionAcceptOutcome.Rejected("That code isn't a valid confirmation from this business")
         } catch (e: MalformedMessageException) {
+            Log.w(TAG, "Redemption confirmation was malformed (card=$cardId)", e)
             return RedemptionAcceptOutcome.Rejected("That code isn't a valid confirmation from this business")
         }
         if (cert.programId != card.programId || cert.cardId != card.cardId) {

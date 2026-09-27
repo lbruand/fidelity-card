@@ -28,12 +28,13 @@ TODO
        gets tight (each StampToken is ~156 bytes; a QR tops out around 2-3KB) —
        explored in conversation, decided against fragmented/animated QR
        sequences (real scanning-UX cost) in favor of, in order:
-         1. De-duplicate `program_id`/`card_id` inside RedemptionRequest - they're
-            repeated once per stamp today even though they're identical for the
-            whole batch. Verifier reconstructs each stamp's signed payload from
-            the shared prefix. Zero trust cost, ~156 -> ~90 bytes/stamp, roughly
-            doubles the threshold that fits in one QR (~20 -> ~30-40). Low
-            effort, worth doing regardless of the rest.
+         1. [x] Done: de-duplicated `program_id`/`card_id` inside RedemptionRequest
+            via a new Compact Stamp Proof format (`io.fidelitycard.crypto.
+            StampToken.toCompactProofBytes`/`parseAndVerifyCompactProof`,
+            CRYPTO_WIRE_FORMAT.md §5.2.1) - 156 -> 88 bytes/stamp, zero trust
+            cost (wrong program_id/card_id reconstructs different signed bytes
+            and just fails verification). Roughly doubles the threshold that
+            fits in one QR (~20 -> ~30-40).
          2. For thresholds beyond that: bring back a lightweight issuer-side
             ledger of minted `(card_id, stamp_id)` pairs (not for gating
             issuance - just a local record) so a large-threshold redemption can

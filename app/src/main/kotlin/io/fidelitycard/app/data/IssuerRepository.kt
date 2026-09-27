@@ -1,5 +1,6 @@
 package io.fidelitycard.app.data
 
+import android.util.Log
 import io.fidelitycard.app.qr.CustomerMessage
 import io.fidelitycard.core.RedemptionValidator
 import io.fidelitycard.crypto.InvalidSignatureException
@@ -10,6 +11,8 @@ import io.fidelitycard.crypto.StampToken
 import io.fidelitycard.crypto.wire.MalformedMessageException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+
+private const val TAG = "IssuerRepository"
 
 data class ProgramSummary(
     val programId: String,
@@ -109,16 +112,26 @@ class IssuerRepository(
             ?: return IssuerScanOutcome.Failed("This card could not be found")
 
         val stampIdHexes = try {
-            request.stampTokenWireBytes.map { wireBytes ->
-                val token = StampToken.parseAndVerify(wireBytes, issuer.publicKey)
-                check(token.cardId == card.cardId) { "stamp belongs to a different card" }
+            request.compactStampProofs.map { proof ->
+                val token = StampToken.parseAndVerifyCompactProof(proof, program.programId, card.cardId, issuer.publicKey)
                 token.stampId.toHex()
             }
         } catch (e: InvalidSignatureException) {
+            // Expected occasionally: a forged/tampered stamp, or a stamp from
+            // a different program's key. Not necessarily a bug, but worth a
+            // real log line rather than vanishing - this is exactly the kind
+            // of thing that's indistinguishable from a wire-format regression
+            // without one.
+            Log.w(TAG, "Redemption rejected: stamp signature did not verify (program=${program.programId}, card=${card.cardId})", e)
             return IssuerScanOutcome.Failed("One of those stamps isn't valid")
         } catch (e: MalformedMessageException) {
+            Log.w(TAG, "Redemption rejected: a stamp proof was malformed (program=${program.programId}, card=${card.cardId})", e)
             return IssuerScanOutcome.Failed("One of those stamps isn't valid")
-        } catch (e: IllegalStateException) {
+        } catch (e: IllegalArgumentException) {
+            // This one *shouldn't* be reachable via the app's own encode/decode
+            // path (compact proofs are always fixed-length) - if it fires, it
+            // most likely means a real bug, so log it louder.
+            Log.e(TAG, "Redemption rejected: a stamp proof had an unexpected length - likely a bug, not user error (program=${program.programId}, card=${card.cardId})", e)
             return IssuerScanOutcome.Failed("One of those stamps isn't valid")
         }
 
