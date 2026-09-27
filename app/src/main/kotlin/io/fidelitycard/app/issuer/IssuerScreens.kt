@@ -137,6 +137,12 @@ fun CreateBusinessScreen(onBack: () -> Unit, onCreated: (String) -> Unit) {
                 label = { Text("Reward (e.g. \"Free coffee\")") },
                 modifier = Modifier.fillMaxWidth(),
             )
+            Text(
+                "Best for low-value rewards (a free coffee, a small discount) — " +
+                    "not high-value goods. See the README for why.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
 
             val threshold = thresholdText.toIntOrNull() ?: 0
             val canCreate = name.isNotBlank() && reward.isNotBlank() && threshold > 0

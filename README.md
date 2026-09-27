@@ -42,6 +42,14 @@ needed and where they go once someone builds it in Android Studio.*
 
 No Bluetooth, no Wi-Fi, no mobile data needed for any of it.
 
+**Security note:** this is built for low-value loyalty rewards (a free
+coffee, a small discount) — the same trust level as a paper punch card,
+with cryptography added mainly to stop casual forgery. It is **not**
+intended for high-value goods or payment-grade security: an issuer's
+private key is stored as plain bytes in the app's private storage, not
+hardware-backed via Android Keystore (see [SPEC/SPECS.md §2/§7](SPEC/SPECS.md)
+for why, and what that does and doesn't protect against).
+
 ## Project layout
 
 ```
@@ -74,9 +82,7 @@ Requirements: JDK 17+ to build everything; the Android SDK only to build
 Early. The protocol and its crypto/business-rule layers (`:crypto`,
 `:core`) are implemented and tested. The app UI (`:app`) is implemented
 but has not yet been built or run on an actual device — see
-[SPEC/SPECS.md §11](SPEC/SPECS.md) for open questions, including a known
-gap around key storage (Ed25519 support in Android Keystore needs API 33,
-above this app's current minSdk 26).
+[SPEC/SPECS.md §11](SPEC/SPECS.md) for open questions.
 
 ## License
 

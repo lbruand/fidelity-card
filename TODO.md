@@ -17,9 +17,19 @@ TODO
        Home). Restore is a full replace, not a merge - simplest safe
        behavior given there's no conflict-resolution model between two
        independently-evolved states.
- * [ ] Store issuer/collector key material in the Android Keystore instead of as
-       raw bytes in Room. Known, documented gap: Ed25519 support in AndroidKeyStore
-       only arrived in API 33, above this app's minSdk 26 (SPEC §7).
+ * [x] Store issuer key material in the Android Keystore instead of as raw
+       bytes in Room: discussed and deliberately deferred, not implemented.
+       Native Ed25519 in AndroidKeyStore only arrived in API 33, above this
+       app's minSdk 26; an AES key-wrapping fallback would work on every
+       supported version but adds real complexity for a threat level this
+       app doesn't need — the value at stake is a small reward (free
+       coffee), not a payment credential. Documented instead: SPEC §2/§7
+       now spell out the scope/threat model explicitly, the README has a
+       security note, and the "New business card" screen shows an
+       in-app hint. Revisit only if the app ever supports higher-value
+       rewards. (Note: this item used to say "issuer/collector" - stale,
+       the collector keypair was removed entirely when the enrollment
+       handshake was cut; only issuer keys exist now.)
  * [ ] Replace Room's `fallbackToDestructiveMigration` with a real `Migration`
        before any actual release — right now a schema bump just wipes local data,
        fine pre-release, not fine once anyone has real cards/programs saved.

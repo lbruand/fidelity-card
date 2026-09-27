@@ -66,6 +66,11 @@ as FOSS today. This spec proceeds on that basis.
   extension; the token format is transport-agnostic so this is low-risk to
   add later.)
 - No multi-issuer-device synchronization in v1 (see §7.4 limitation).
+- Not designed for high-value rewards or payment-grade security. The
+  threat model and key storage (§7) target low-value loyalty rewards
+  (e.g. a free coffee, a small discount) — the same trust level as a
+  paper punch card, with cryptography added to stop casual forgery, not
+  to resist a well-resourced attacker.
 
 ## 3. Terminology
 
@@ -344,9 +349,20 @@ no real benefit at this scale (a Bloom filter's error direction is always
 double redemption, but it does cause wrongful denial of a genuine reward
 once it starts filling up; simply unnecessary here).
 
-Private keys are stored via Android Keystore (hardware-backed where
-available), never exported in plaintext; `privkey_alias` is a Keystore
-alias, not the key material itself.
+Private keys (the issuer's Ed25519 seed) are stored as plain bytes in
+Room, in the app's private storage — not hardware-backed via Android
+Keystore. This was evaluated and deliberately deferred (not rejected
+outright): native Ed25519 support in Keystore only arrived in API 33,
+above this app's minSdk 26, and the realistic threat this app faces
+(the value at stake is a small reward like a free coffee, not a
+high-value good or payment credential) doesn't justify the added
+complexity of a version-gated implementation or an AES key-wrapping
+layer right now. Android's app sandboxing already prevents other apps
+from reading this data on a non-rooted device; what Keystore would add
+is protection against a rooted device or forensic extraction, which is
+out of proportion to what's actually being protected here. Revisit if
+the app ever supports higher-value rewards. See the README's security
+note and `TODO.md`.
 
 ### 7.1 Threat model summary
 
@@ -361,6 +377,7 @@ alias, not the key material itself.
 | Double redemption across multiple issuer devices for the same program (no sync) | **Not fully solved in v1** — documented limitation, §7.4 |
 | A card's local state becomes corrupted or otherwise unrecoverable | Not automatically fixable; escape hatch is deleting the card and rejoining (collector-initiated, loses that card's progress) |
 | Loss of collector's phone | Out of scope for v1 (no backup/restore yet, see §10) |
+| Root/forensic extraction of the issuer's device reads the raw private key | **Not mitigated** — accepted risk, see §2's scope note; key is plain bytes in Room, not Keystore-backed |
 
 ### 7.4 Known limitation: multi-device issuers
 
@@ -386,7 +403,9 @@ limitation remains.)
   ML Kit — ML Kit depends on Google Play Services, which is disqualifying
   for F-Droid.
 - **Persistence**: Room over SQLite.
-- **Key storage**: Android Keystore.
+- **Key storage**: plain bytes in Room (app-private storage), not Android
+  Keystore — see §7's note on why, and the scope this app is intended
+  for.
 - **Min/target SDK**: TBD at implementation time; no Play Services
   dependency anywhere in the dependency tree.
 - **UI**: Jetpack Compose.
