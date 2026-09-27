@@ -17,10 +17,15 @@ class FidelityApplication : Application() {
 
     private val database: FidelityCardDatabase by lazy {
         Room.databaseBuilder(this, FidelityCardDatabase::class.java, "fidelity-card.db")
-            // Pre-release, still no real user base to protect: wiping on a
-            // schema bump is fine for now. Replace with a real Migration
-            // before any actual release (SPEC/SPECS.md §11, TODO.md).
-            .fallbackToDestructiveMigration(true)
+            // Versions 1-3 predate schema export (no baseline schema JSON
+            // exists to write a real Migration against) and were only ever
+            // installed pre-release, so destructively wiping from any of
+            // them is still fine. From version 4 onward, schemas are
+            // exported (see app/schemas/) and any future version bump
+            // requires a real Migration added via .addMigrations(...) -
+            // Room throws if one is missing instead of silently wiping
+            // (TODO.md, SPEC/SPECS.md §8).
+            .fallbackToDestructiveMigrationFrom(true, 1, 2, 3)
             .build()
     }
 

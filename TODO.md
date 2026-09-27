@@ -30,9 +30,15 @@ TODO
        rewards. (Note: this item used to say "issuer/collector" - stale,
        the collector keypair was removed entirely when the enrollment
        handshake was cut; only issuer keys exist now.)
- * [ ] Replace Room's `fallbackToDestructiveMigration` with a real `Migration`
-       before any actual release — right now a schema bump just wipes local data,
-       fine pre-release, not fine once anyone has real cards/programs saved.
+ * [x] Replace Room's `fallbackToDestructiveMigration` with a real `Migration`
+       before any actual release: done as a guardrail, not as an actual
+       migration (there's no schema change to migrate yet). Schema export
+       turned on (`exportSchema = true`), `app/schemas/` now holds the
+       version-4 baseline JSON. The database builder now only allows a
+       destructive wipe for versions 1-3 (pre-baseline, pre-release only —
+       `fallbackToDestructiveMigrationFrom(true, 1, 2, 3)`); any future
+       version bump must come with a real `Migration` or Room throws at
+       startup instead of silently wiping data (SPEC §8).
  * [ ] Optional lightweight sync service for issuers running more than one till
        device, to close the multi-device double-redemption gap (SPEC §7.4/§11).
        Not needed until someone actually wants multi-till support.

@@ -12,7 +12,7 @@ import androidx.room.RoomDatabase
         CollectorStampEntity::class,
     ],
     version = 4,
-    exportSchema = false,
+    exportSchema = true,
 )
 abstract class FidelityCardDatabase : RoomDatabase() {
     abstract fun issuerProgramDao(): IssuerProgramDao

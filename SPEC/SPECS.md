@@ -402,7 +402,16 @@ limitation remains.)
 - **QR generation/scanning**: ZXing (`zxing-android-embedded`), *not*
   ML Kit — ML Kit depends on Google Play Services, which is disqualifying
   for F-Droid.
-- **Persistence**: Room over SQLite.
+- **Persistence**: Room over SQLite. Schema is exported (`exportSchema = true`,
+  JSON checked into `app/schemas/`) starting at version 4, the first
+  version with a real baseline to migrate from. Versions 1-3 predate this
+  and were only ever installed pre-release, so the database builder still
+  destructively wipes from any of them
+  (`fallbackToDestructiveMigrationFrom(true, 1, 2, 3)`); any version bump
+  from 4 onward must ship a real `Migration` (added via
+  `.addMigrations(...)`) — Room throws at startup instead of silently
+  wiping data if one is missing, which is the actual guardrail this
+  replaces the old blanket `fallbackToDestructiveMigration(true)` with.
 - **Key storage**: plain bytes in Room (app-private storage), not Android
   Keystore — see §7's note on why, and the scope this app is intended
   for.
