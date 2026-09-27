@@ -547,9 +547,12 @@ CI never needs an Android SDK or emulator:
   minimal self-hostable relay that just exchanges Stamp/Redemption
   Certificates between an issuer's own devices (not a trust party — it
   never signs anything) would close the gap in §7.4.
-- **Revocation**: what happens if an issuer needs to revoke a card (fraud)
-  or a whole program (going out of business)? Needs a signed revocation
-  message type.
+- ~~**Revocation**~~ — considered and rejected: an issuer can already
+  unilaterally refuse a card or shut down a program with no protocol
+  change at all (it's the sole authority over its own redemptions); a
+  signed, collector-visible `RevocationCertificate` message type was
+  considered but decided against as too much machinery for this app's
+  actual stakes (a free coffee, not fraud-at-scale).
 - **Large thresholds**: Compact Stamp Proofs (§6.3/CRYPTO_WIRE_FORMAT.md
   §5.2.1) push the comfortable ceiling to ~30-40 in one QR; for
   meaningfully larger thresholds, see `TODO.md` for the planned follow-up

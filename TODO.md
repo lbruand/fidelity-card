@@ -42,8 +42,13 @@ TODO
  * [ ] Optional lightweight sync service for issuers running more than one till
        device, to close the multi-device double-redemption gap (SPEC §7.4/§11).
        Not needed until someone actually wants multi-till support.
- * [ ] Revocation: a signed message type to revoke a single card (fraud) or an
-       entire program (business closing) (SPEC §11). No way to do this today.
+ * [x] ~~Revocation~~ — rejected: too much machinery for this app's actual
+       stakes (a free coffee, not fraud-at-scale). An issuer already has
+       everything needed to refuse a card or shut down a program
+       unilaterally without any protocol change (it's the sole authority
+       over its own redemptions); a signed, collector-visible
+       `RevocationCertificate` was considered but decided against as not
+       worth the wire-format weight for this app.
  * [ ] Large reward thresholds (much more than ~20 stamps): a single QR's payload
        gets tight (each StampToken is ~156 bytes; a QR tops out around 2-3KB) —
        explored in conversation, decided against fragmented/animated QR
