@@ -54,8 +54,6 @@ class BusinessDetailViewModel(
         }
         viewModelScope.launch {
             _scanState.value = when (val outcome = repository.handleCustomerMessage(programId, bytes)) {
-                is IssuerScanOutcome.Enrolled ->
-                    ScanCustomerState.Responding(outcome.responseBytes, "New card created - show this back to your customer")
                 is IssuerScanOutcome.Stamped ->
                     ScanCustomerState.Responding(outcome.responseBytes, "Stamp added! Show this back to your customer")
                 is IssuerScanOutcome.Redeemed ->

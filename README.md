@@ -32,11 +32,12 @@ needed and where they go once someone builds it in Android Studio.*
 
 - **Issuer**: create a business card (name, stamps needed, reward), then
   one button handles everything — **"Scan a customer"** reads whatever
-  the customer's phone is showing (a join request, a stamp request, or a
-  redemption request) and responds with the right signed QR code.
-- **Collector**: scan a business's QR to join, then each visit is
-  show-a-QR → scan-their-reply. Progress is shown as filled/empty dots,
-  like a physical punch card. Once enough stamps are collected, the same
+  the customer's phone is showing (a stamp request or a redemption
+  request) and responds with the right signed QR code.
+- **Collector**: scan a business's QR to join — that's it, no reply needed,
+  joining is purely local. Each visit after that is show-a-QR →
+  scan-their-reply. Progress is shown as filled/empty dots, like a
+  physical punch card. Once enough stamps are collected, the same
   show/scan pattern claims the reward.
 
 No Bluetooth, no Wi-Fi, no mobile data needed for any of it.

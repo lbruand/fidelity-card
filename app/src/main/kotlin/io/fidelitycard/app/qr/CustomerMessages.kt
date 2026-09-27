@@ -1,44 +1,27 @@
 package io.fidelitycard.app.qr
 
-import io.fidelitycard.crypto.VerifyingKey
 import io.fidelitycard.crypto.wire.MalformedMessageException
 import io.fidelitycard.crypto.wire.WireReader
 import io.fidelitycard.crypto.wire.WireWriter
-import java.time.Instant
 
 private object Tag {
-    const val JOIN_REQUEST = 101
-    const val STAMP_REQUEST = 102
-    const val REDEMPTION_REQUEST = 103
+    const val STAMP_REQUEST = 101
+    const val REDEMPTION_REQUEST = 102
 }
 
 /**
- * The three things a collector's phone can show an issuer's camera
- * (SPEC/SPECS.md §6.1-§6.3). None of these are signed - unlike the
- * `:crypto` message types, they're not proof of anything on their own, just
- * a request; whatever they ask for only becomes real once the issuer signs
- * a response. A leading tag byte (distinct from `io.fidelitycard.crypto.
- * wire.MessageTag`, a different message family) is what lets the issuer's
- * single "Scan a customer" button figure out which of the three it's
- * looking at without knowing in advance.
+ * The two things a collector's phone can show an issuer's camera
+ * (SPEC/SPECS.md §6.2-§6.3). Joining a program is purely local for the
+ * collector (no message to the issuer at all - SPEC/SPECS.md §6.1), so
+ * there is no third, "join," message here. Neither of these is signed -
+ * unlike the `:crypto` message types, they're not proof of anything on
+ * their own, just a request; whatever they ask for only becomes real once
+ * the issuer signs a response. A leading tag byte (distinct from
+ * `io.fidelitycard.crypto.wire.MessageTag`, a different message family) is
+ * what lets the issuer's single "Scan a customer" button figure out which
+ * of the two it's looking at without knowing in advance.
  */
 sealed interface CustomerMessage {
-
-    data class JoinRequest(
-        val programId: String,
-        val cardId: String,
-        val collectorPublicKey: VerifyingKey,
-        val requestedAt: Instant,
-    ) : CustomerMessage {
-        fun toWireBytes(): ByteArray =
-            WireWriter()
-                .writeByte(Tag.JOIN_REQUEST)
-                .writeString(programId)
-                .writeString(cardId)
-                .writeFixedBytes(collectorPublicKey.bytes, VerifyingKey.LENGTH_BYTES)
-                .writeInt64(requestedAt.toEpochMilli())
-                .toByteArray()
-    }
 
     data class StampRequest(
         val programId: String,
@@ -73,14 +56,6 @@ sealed interface CustomerMessage {
         fun parse(bytes: ByteArray): CustomerMessage? = try {
             val reader = WireReader(bytes)
             when (val tag = reader.readByte()) {
-                Tag.JOIN_REQUEST -> {
-                    val programId = reader.readString()
-                    val cardId = reader.readString()
-                    val collectorPublicKey = VerifyingKey(reader.readFixedBytes(VerifyingKey.LENGTH_BYTES))
-                    val requestedAt = Instant.ofEpochMilli(reader.readInt64())
-                    reader.requireFullyConsumed()
-                    JoinRequest(programId, cardId, collectorPublicKey, requestedAt)
-                }
                 Tag.STAMP_REQUEST -> {
                     val programId = reader.readString()
                     val cardId = reader.readString()

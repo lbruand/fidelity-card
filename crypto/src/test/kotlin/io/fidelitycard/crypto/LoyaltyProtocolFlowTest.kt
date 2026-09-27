@@ -7,7 +7,7 @@ import java.util.UUID
 
 /**
  * Walks the whole protocol end to end (SPEC/SPECS.md §6): a business issues
- * a program, a customer enrolls, earns enough stamps, and redeems them.
+ * a program, a customer joins, earns enough stamps, and redeems them.
  * Every step only uses each type's public `issue`/`mint`/`parseAndVerify`
  * API, exactly as an app would after scanning a QR code — this test is the
  * executable version of the usage the library is meant to make simple.
@@ -15,11 +15,12 @@ import java.util.UUID
 class LoyaltyProtocolFlowTest {
 
     @Test
-    fun `enroll, earn ten stamps and redeem`() {
-        // The issuer (e.g. a coffee shop till) and the collector (a customer's
-        // phone) each hold nothing but a key pair — no accounts, no server.
+    fun `join, earn ten stamps and redeem`() {
+        // The issuer (e.g. a coffee shop till) holds a key pair - no account,
+        // no server. The collector holds no cryptographic identity at all:
+        // a card id is just a locally-generated opaque string, since nothing
+        // in the protocol ever needs to verify who the collector is.
         val issuer = SigningKeyPair.generate()
-        val collector = SigningKeyPair.generate()
 
         // 1. Issuer creates a Program and shows it as a QR code.
         val issuedProgram = ProgramManifest.issue(issuer, name = "Joe's Coffee", threshold = 10, reward = "Free coffee")
@@ -30,12 +31,11 @@ class LoyaltyProtocolFlowTest {
         val program = ProgramManifest.parseAndVerify(programQrBytes)
         assertEquals("Free coffee", program.reward)
 
-        // 2. Enrollment: collector generates a card id, issuer certifies it.
+        // 2. Joining is purely local: the collector picks a card id and
+        // starts tracking a card for this program. No round trip with the
+        // issuer, no certificate - the issuer only ever learns a card id
+        // exists the first time it mints a stamp for it (SPEC/SPECS.md §6.1).
         val cardId = UUID.randomUUID().toString()
-        val cardCertBytes = CardCertificate.issue(issuer, program.programId, cardId, collector.publicKey)
-            .toWireBytes()
-        val cardCert = CardCertificate.parseAndVerify(cardCertBytes, program.issuerPublicKey)
-        assertEquals(cardId, cardCert.cardId)
 
         // 3. Stamping: ten purchases, ten QR round trips. Stamps are
         // unordered - each is independently valid, deduplicated by its own

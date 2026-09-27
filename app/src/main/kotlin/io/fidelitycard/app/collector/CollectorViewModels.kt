@@ -4,7 +4,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import io.fidelitycard.app.data.CardSummary
 import io.fidelitycard.app.data.CollectorRepository
-import io.fidelitycard.app.data.PendingJoin
 import io.fidelitycard.app.data.PendingRedemption
 import io.fidelitycard.app.data.RedemptionAcceptOutcome
 import io.fidelitycard.app.data.StampAcceptOutcome
@@ -31,11 +30,9 @@ class CardDetailViewModel(private val repository: CollectorRepository, private v
     }
 }
 
-/** Joining a business is its own little state machine because it carries a not-yet-persisted [PendingJoin] between its two scans. */
+/** Joining is a single scan - no round trip (SPEC/SPECS.md §6.1): the collector never sends the issuer anything. */
 sealed interface JoinState {
     data object ScanProgram : JoinState
-    data class ShowJoinRequest(val pending: PendingJoin, val requestBytes: ByteArray) : JoinState
-    data class ScanReply(val pending: PendingJoin) : JoinState
     data class Done(val cardId: String, val programName: String) : JoinState
     data class Failed(val message: String) : JoinState
 }
@@ -45,36 +42,16 @@ class JoinFlowViewModel(private val repository: CollectorRepository) : ViewModel
     private val _state = MutableStateFlow<JoinState>(JoinState.ScanProgram)
     val state: StateFlow<JoinState> = _state
 
-    fun onNextTapped() {
-        val current = _state.value
-        if (current is JoinState.ShowJoinRequest) {
-            _state.value = JoinState.ScanReply(current.pending)
-        }
-    }
-
     fun onScanned(bytes: ByteArray?) {
         if (bytes == null) return
-        when (val current = _state.value) {
-            JoinState.ScanProgram -> {
-                val program = repository.parseProgramQr(bytes)
-                _state.value = if (program != null) {
-                    val (pending, requestBytes) = repository.buildJoinRequest(program)
-                    JoinState.ShowJoinRequest(pending, requestBytes)
-                } else {
-                    JoinState.Failed("That doesn't look like a business code")
-                }
-            }
-            is JoinState.ScanReply -> {
-                viewModelScope.launch {
-                    val summary = repository.completeJoin(current.pending, bytes)
-                    _state.value = if (summary != null) {
-                        JoinState.Done(summary.cardId, summary.programName)
-                    } else {
-                        JoinState.Failed("That confirmation didn't match - ask the business to try again")
-                    }
-                }
-            }
-            else -> Unit
+        val program = repository.parseProgramQr(bytes)
+        if (program == null) {
+            _state.value = JoinState.Failed("That doesn't look like a business code")
+            return
+        }
+        viewModelScope.launch {
+            val summary = repository.joinProgram(program)
+            _state.value = JoinState.Done(summary.cardId, summary.programName)
         }
     }
 

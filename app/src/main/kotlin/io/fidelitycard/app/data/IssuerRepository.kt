@@ -2,7 +2,6 @@ package io.fidelitycard.app.data
 
 import io.fidelitycard.app.qr.CustomerMessage
 import io.fidelitycard.core.RedemptionValidator
-import io.fidelitycard.crypto.CardCertificate
 import io.fidelitycard.crypto.InvalidSignatureException
 import io.fidelitycard.crypto.ProgramManifest
 import io.fidelitycard.crypto.RedemptionCertificate
@@ -22,7 +21,6 @@ data class ProgramSummary(
 
 /** What happened after the issuer scanned whatever a customer's phone was showing. */
 sealed interface IssuerScanOutcome {
-    data class Enrolled(val responseBytes: ByteArray) : IssuerScanOutcome
     data class Stamped(val responseBytes: ByteArray) : IssuerScanOutcome
     data class Redeemed(val responseBytes: ByteArray) : IssuerScanOutcome
     data class Failed(val message: String) : IssuerScanOutcome
@@ -35,11 +33,13 @@ sealed interface IssuerScanOutcome {
  * from its stored seed only for the moment it's needed to sign a response,
  * never held longer than that.
  *
- * Stamps are unordered (SPEC/SPECS.md §6.2): minting one is unconditional,
- * gated only by the cashier's own decision to tap "Scan a customer" for a
- * real purchase - the same trust model as a paper stamp card. Only
- * redemption is cryptographically gated, via [RedemptionValidator] and the
- * spent-stamp-id store in [redeemedStampDao].
+ * There is no enrollment step (SPEC/SPECS.md §6.1): a card id is first
+ * seen (and lazily recorded) the moment it shows up in a stamp request.
+ * Stamps are unordered (§6.2): minting one is unconditional, gated only by
+ * the cashier's own decision to tap "Scan a customer" for a real purchase
+ * - the same trust model as a paper stamp card. Only redemption is
+ * cryptographically gated, via [RedemptionValidator] and the spent-stamp-id
+ * store in [redeemedStampDao].
  */
 class IssuerRepository(
     private val programDao: IssuerProgramDao,
@@ -81,30 +81,9 @@ class IssuerRepository(
 
         val issuer = SigningKeyPair.fromSeed(program.issuerSeed)
         return when (message) {
-            is CustomerMessage.JoinRequest -> handleJoin(program, issuer, message)
             is CustomerMessage.StampRequest -> handleStamp(program, issuer, message)
             is CustomerMessage.RedemptionRequest -> handleRedemption(program, issuer, message)
         }
-    }
-
-    private suspend fun handleJoin(
-        program: IssuerProgramEntity,
-        issuer: SigningKeyPair,
-        request: CustomerMessage.JoinRequest,
-    ): IssuerScanOutcome {
-        if (issuedCardDao.find(program.programId, request.cardId) != null) {
-            return IssuerScanOutcome.Failed("This card was already created")
-        }
-        val cert = CardCertificate.issue(issuer, program.programId, request.cardId, request.collectorPublicKey)
-        issuedCardDao.insert(
-            IssuedCardEntity(
-                programId = program.programId,
-                cardId = request.cardId,
-                collectorPublicKey = request.collectorPublicKey.bytes,
-                createdAt = System.currentTimeMillis(),
-            ),
-        )
-        return IssuerScanOutcome.Enrolled(cert.toWireBytes())
     }
 
     private suspend fun handleStamp(
@@ -112,8 +91,11 @@ class IssuerRepository(
         issuer: SigningKeyPair,
         request: CustomerMessage.StampRequest,
     ): IssuerScanOutcome {
-        issuedCardDao.find(program.programId, request.cardId)
-            ?: return IssuerScanOutcome.Failed("This card could not be found")
+        if (issuedCardDao.find(program.programId, request.cardId) == null) {
+            issuedCardDao.insert(
+                IssuedCardEntity(program.programId, request.cardId, createdAt = System.currentTimeMillis()),
+            )
+        }
         val stamp = StampToken.mint(issuer, program.programId, request.cardId)
         return IssuerScanOutcome.Stamped(stamp.toWireBytes())
     }
@@ -161,7 +143,6 @@ class IssuerRepository(
     }
 
     private fun CustomerMessage.programId(): String = when (this) {
-        is CustomerMessage.JoinRequest -> programId
         is CustomerMessage.StampRequest -> programId
         is CustomerMessage.RedemptionRequest -> programId
     }

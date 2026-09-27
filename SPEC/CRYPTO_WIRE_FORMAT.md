@@ -1,19 +1,22 @@
 # Crypto wire format
 
-Status: **v2**, implemented in `:crypto` (`io.fidelitycard.crypto`)
+Status: **v3**, implemented in `:crypto` (`io.fidelitycard.crypto`)
 
-This document is the byte-for-byte specification of the four signed message
+This document is the byte-for-byte specification of the signed message
 types in [SPEC/SPECS.md](SPECS.md) §5. It exists so a **non-Kotlin**
 implementation (Swift, Python, Rust, whatever) can produce and verify
 byte-identical messages without reading the Kotlin source — only an
 Ed25519 library and this document. The Kotlin implementation is the
 reference implementation, not the spec; this file is the spec.
 
-> **v2 changed the Stamp Token and Redemption Certificate layouts**
-> (dropped ordered serials for unordered, uniquely-identified stamps — see
-> SPEC/SPECS.md §6.2/§7.1). The version byte was bumped so v1 and v2 bytes
-> can never be silently misparsed as each other; there is no compatibility
-> between them.
+> **v2** dropped ordered serials for unordered, uniquely-identified stamps.
+> **v3** removed Card Certificate entirely — enrollment is no longer a
+> signed handshake at all, just a local decision the collector makes after
+> verifying a Program Manifest (see SPEC/SPECS.md §6.1 for why: nothing
+> downstream ever re-checked a Card Certificate's collector key, so it
+> wasn't buying real security). The version byte is bumped on every one of
+> these changes so bytes from different versions can never be silently
+> misparsed as each other; there is no compatibility between v1/v2/v3.
 
 ## 1. Design choice: fixed binary layout, not CBOR
 
@@ -48,15 +51,14 @@ Every message starts with:
 
 | Field | Type | Value |
 |---|---|---|
-| `version` | `byte` | `2` |
+| `version` | `byte` | `3` |
 | `type` | `byte` | see table below |
 
 | Message | `type` |
 |---|---|
 | Program Manifest | `1` |
-| Card Certificate | `2` |
-| Stamp Token | `3` |
-| Redemption Certificate | `4` |
+| Stamp Token | `2` |
+| Redemption Certificate | `3` |
 
 A reader must reject the message (as malformed, not as a signature
 failure) if `version` or `type` don't match what it expected.
@@ -85,7 +87,9 @@ makes the test vectors below exact and reproducible.
 
 ### 5.1 Program Manifest (`type = 1`)
 
-Self-signed by the issuer: the root of trust for one program.
+Self-signed by the issuer: the root of trust for one program. Also what a
+collector verifies to join it (§6 below) — there is no separate enrollment
+message.
 
 | Order | Field | Type |
 |---|---|---|
@@ -96,28 +100,14 @@ Self-signed by the issuer: the root of trust for one program.
 | 5 | `reward` | `string` |
 | — | `signature` | `fixedBytes(64)`, by `issuer_public_key` itself |
 
-### 5.2 Card Certificate (`type = 2`)
-
-Signed by the issuer over a collector's enrollment. Verified against the
-issuer key already pinned from that program's manifest (this message
-carries no key to bootstrap trust from).
-
-| Order | Field | Type |
-|---|---|---|
-| 1 | `program_id` | `string` |
-| 2 | `card_id` | `string` |
-| 3 | `collector_public_key` | `fixedBytes(32)` |
-| 4 | `issued_at` | `int64` (Unix epoch milliseconds) |
-| — | `signature` | `fixedBytes(64)`, by the program's issuer key |
-
-### 5.3 Stamp Token (`type = 3`)
+### 5.2 Stamp Token (`type = 2`)
 
 Deliberately unordered: each stamp is an independent grant identified by a
 random `stamp_id`, not a position in a sequence (SPEC/SPECS.md §6.2).
 Preventing the same purchase from minting more than one stamp is treated
 as an issuer-side operational/trust matter, the same as a paper card — the
 protocol only cryptographically enforces that a stamp can't be forged and
-can't be redeemed twice (§5.4).
+can't be redeemed twice (§5.3).
 
 | Order | Field | Type |
 |---|---|---|
@@ -127,7 +117,7 @@ can't be redeemed twice (§5.4).
 | 4 | `issued_at` | `int64` |
 | — | `signature` | `fixedBytes(64)`, by the program's issuer key |
 
-### 5.4 Redemption Certificate (`type = 4`)
+### 5.3 Redemption Certificate (`type = 3`)
 
 A receipt, not a range: since stamps are unordered there is no "through
 serial N" to certify. The collector already knows exactly which stamp ids
@@ -174,12 +164,6 @@ issuer seed (32 bytes):
 
 issuer public key (32 bytes):
 03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8
-
-collector seed (32 bytes):
-6465666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f80818283
-
-collector public key (32 bytes):
-0bbc346a57667c380120bd9c7fd7e51d2c5fdfea37cd2f5bf405b2c6bf6f2d78
 ```
 
 **Program Manifest** — `name = "Joe's Coffee"`, `threshold = 10`,
@@ -189,28 +173,21 @@ collector public key (32 bytes):
 program_id: OUBSI7FFNROBZITIHPKRLX7HFL
 
 wire bytes (157 bytes):
-0201001a4f554253493746464e524f425a49544948504b524c583748464c03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8000c4a6f65277320436f666665650000000a000b4672656520636f66666565f8d100cbe2c683d690955cebf633890fa9c239cd54c3d8258e7cf2a828050345ac81bbb0a04c035941d5ea626f8958ccd5690754d2c7c61eb1b3c33333fc1904
+0301001a4f554253493746464e524f425a49544948504b524c583748464c03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8000c4a6f65277320436f666665650000000a000b4672656520636f666665658265cd8ec9abc25d04c51d51a3a549257d362e0412237c750531e36969d2f948c0d2628278075f6bb64575d44b9f1e1e2512ee92873a8bc56b328fcf2983c60d
 ```
 
-**Card Certificate** — `program_id` as above, `card_id = "11111111-1111-1111-1111-111111111111"`, `collector_public_key` as above, `issued_at = 1700000000000`:
-
-```
-wire bytes (172 bytes):
-0202001a4f554253493746464e524f425a49544948504b524c583748464c002431313131313131312d313131312d313131312d313131312d3131313131313131313131310bbc346a57667c380120bd9c7fd7e51d2c5fdfea37cd2f5bf405b2c6bf6f2d780000018bcfe56800ab4e332931464c265ea19130a2dd9b1b287ac4ed63e9c6960f64727cab119a87df60fead0b8126e6d6685d897980e8daa7a7cdd174ac9993eb9f2f2f11ad2d06
-```
-
-**Stamp Token** — same `program_id`/`card_id`, `stamp_id = 00 01 ... 0f` (16 bytes), `issued_at = 1700000000000`:
+**Stamp Token** — `program_id` as above, `card_id = "11111111-1111-1111-1111-111111111111"`, `stamp_id = 00 01 ... 0f` (16 bytes), `issued_at = 1700000000000`:
 
 ```
 wire bytes (156 bytes):
-0203001a4f554253493746464e524f425a49544948504b524c583748464c002431313131313131312d313131312d313131312d313131312d313131313131313131313131000102030405060708090a0b0c0d0e0f0000018bcfe56800ffaffc87d11cae25271f6fdac5e40aa2607289e82e4a0040ace36669d6f6a473316b4aa67a37d615161e671e50d04edc423311227542f57b86aa3243a7e5360f
+0302001a4f554253493746464e524f425a49544948504b524c583748464c002431313131313131312d313131312d313131312d313131312d313131313131313131313131000102030405060708090a0b0c0d0e0f0000018bcfe568004f7dd4988cc61a5ac52dce5a32cd0bdfcf193909d77e079aa9da0dfa5a27b04fda16d160a8b38d15f393b919691b886982b5e86264f5ccbee9d24b434f78a001
 ```
 
 **Redemption Certificate** — same `program_id`/`card_id`, `redeemed_count = 10`, `redeemed_at = 1700000000000`, `redemption_id = 01 02 ... 10` (16 bytes):
 
 ```
 wire bytes (160 bytes):
-0204001a4f554253493746464e524f425a49544948504b524c583748464c002431313131313131312d313131312d313131312d313131312d3131313131313131313131310000000a0000018bcfe568000102030405060708090a0b0c0d0e0f10193303e4d6e3e68552af9b7a8b3ac936d1a420955a561f1f08b0a0c9cf9c1d9d1b4f5bc924fd369ff7256ab63509eab6361988a091eed55af4bc7a91f700ea00
+0303001a4f554253493746464e524f425a49544948504b524c583748464c002431313131313131312d313131312d313131312d313131312d3131313131313131313131310000000a0000018bcfe568000102030405060708090a0b0c0d0e0f100c1dabfb7aed26214027ea7288cffae26ffb5ed5b2a762f1c023e3abdb8eaa934dc9f226dafbd8551178656294765c36e175095093a664b6cba7e478ca30b906
 ```
 
 A conforming implementation on any platform must: (a) reproduce these exact

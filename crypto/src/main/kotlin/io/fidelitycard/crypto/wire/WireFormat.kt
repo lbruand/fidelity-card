@@ -2,12 +2,13 @@ package io.fidelitycard.crypto.wire
 
 /**
  * Protocol version tag written as the first byte of every message
- * (SPEC/SPECS.md §5). Bumped to 2 when StampToken/RedemptionCertificate
- * dropped ordered serials for unordered, uniquely-identified stamps - an
- * incompatible field-layout change, so old and new bytes must never be
- * silently misparsed as each other.
+ * (SPEC/SPECS.md §5). Bumped to 3 when Card Certificate (and enrollment as
+ * a distinct handshake) was removed entirely - it never verified anything
+ * a stamp/redemption request's own signature checks didn't already cover,
+ * so it wasn't buying real security; see SPEC/SPECS.md §6.1. This also
+ * frees up its type tag, reused by renumbering rather than left as a gap.
  */
-const val WIRE_VERSION = 2
+const val WIRE_VERSION = 3
 
 /** Ed25519 signatures are always exactly 64 bytes. */
 const val SIGNATURE_LENGTH_BYTES = 64
@@ -15,9 +16,8 @@ const val SIGNATURE_LENGTH_BYTES = 64
 /** Type tags, one per signed message kind in SPEC/SPECS.md §5. Never reused across kinds. */
 object MessageTag {
     const val PROGRAM = 1
-    const val CARD_CERT = 2
-    const val STAMP = 3
-    const val REDEMPTION = 4
+    const val STAMP = 2
+    const val REDEMPTION = 3
 }
 
 /**

@@ -22,16 +22,16 @@ data class IssuerProgramEntity(
 )
 
 /**
- * One customer's enrollment in one of this device's programs, from the
- * issuer's side. Stamps are unordered and unconditionally minted (issuance
- * is a trust matter for the issuer, like a paper card - SPEC/SPECS.md §6.2),
- * so this only needs to record that the card exists, not any stamp count.
+ * A card id this issuer has seen, from its side. There is no enrollment
+ * handshake (SPEC/SPECS.md §6.1): this row is created lazily, the first
+ * time a card id shows up in a stamp request, purely as a "have I seen
+ * this before" sanity record - it carries no key material, since nothing
+ * in the protocol ever verifies who a collector is.
  */
 @Entity(tableName = "issued_cards", primaryKeys = ["programId", "cardId"])
 data class IssuedCardEntity(
     val programId: String,
     val cardId: String,
-    val collectorPublicKey: ByteArray,
     val createdAt: Long,
 )
 
@@ -48,7 +48,13 @@ data class RedeemedStampEntity(
     val redeemedAt: Long,
 )
 
-/** A card this device collects stamps on. See [IssuerProgramEntity] for the key-storage caveat. */
+/**
+ * A card this device collects stamps on. [cardId] is just a locally
+ * generated opaque identifier - the collector holds no cryptographic
+ * identity of its own (SPEC/SPECS.md §4/§6.1); everything that actually
+ * needs protecting is covered by the issuer's own signatures on each
+ * Stamp Token and Redemption Certificate.
+ */
 @Entity(tableName = "collector_cards")
 data class CollectorCardEntity(
     @PrimaryKey val cardId: String,
@@ -57,7 +63,6 @@ data class CollectorCardEntity(
     val programName: String,
     val threshold: Int,
     val reward: String,
-    val collectorSeed: ByteArray,
     val createdAt: Long,
 )
 

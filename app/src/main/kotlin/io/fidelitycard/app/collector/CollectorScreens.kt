@@ -124,21 +124,6 @@ fun JoinBusinessScreen(onBack: () -> Unit, onDone: (String) -> Unit) {
                         Text("Scan business")
                     }
                 }
-                is JoinState.ShowJoinRequest -> {
-                    QrDisplay(bytes = s.requestBytes, instruction = "Show this to the business")
-                    Button(
-                        onClick = {
-                            viewModel.onNextTapped()
-                            scanner.launch()
-                        },
-                        modifier = Modifier.fillMaxWidth().height(72.dp),
-                    ) {
-                        Text("Next: scan their reply")
-                    }
-                }
-                is JoinState.ScanReply -> {
-                    Text("Scanning...", style = MaterialTheme.typography.titleMedium)
-                }
                 is JoinState.Done -> {
                     Text("You joined ${s.programName}!", style = MaterialTheme.typography.headlineSmall)
                     Spacer(modifier = Modifier.height(24.dp))

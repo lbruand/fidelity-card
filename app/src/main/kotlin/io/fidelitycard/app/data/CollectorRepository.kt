@@ -2,17 +2,14 @@ package io.fidelitycard.app.data
 
 import io.fidelitycard.app.qr.CustomerMessage
 import io.fidelitycard.core.CardProgress
-import io.fidelitycard.crypto.CardCertificate
 import io.fidelitycard.crypto.InvalidSignatureException
 import io.fidelitycard.crypto.ProgramManifest
 import io.fidelitycard.crypto.RedemptionCertificate
-import io.fidelitycard.crypto.SigningKeyPair
 import io.fidelitycard.crypto.StampToken
 import io.fidelitycard.crypto.VerifyingKey
 import io.fidelitycard.crypto.wire.MalformedMessageException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
-import java.time.Instant
 import java.util.UUID
 
 data class CardSummary(
@@ -21,13 +18,6 @@ data class CardSummary(
     val programName: String,
     val reward: String,
     val progress: CardProgress,
-)
-
-/** Held by the UI between "scanned the business's QR" and "scanned their reply" - not persisted until it succeeds. */
-data class PendingJoin(
-    val program: ProgramManifest,
-    val collectorKeyPair: SigningKeyPair,
-    val cardId: String,
 )
 
 sealed interface StampAcceptOutcome {
@@ -48,6 +38,14 @@ sealed interface RedemptionAcceptOutcome {
  * and accept stamps, and build/accept a redemption (SPEC/SPECS.md §6). Any
  * message this device didn't sign itself is parsed with `parseAndVerify`
  * and never trusted otherwise.
+ *
+ * The collector holds no cryptographic identity at all (SPEC/SPECS.md
+ * §4/§6.1): a card id is just a locally-generated opaque string. Nothing
+ * downstream ever needs to verify who the collector is - a Stamp Token's
+ * or Redemption Certificate's issuer signature is what makes it real, and
+ * possessing the actual signed stamp bytes is what makes a redemption
+ * valid, neither of which requires the collector to prove anything about
+ * itself.
  */
 class CollectorRepository(
     private val cardDao: CollectorCardDao,
@@ -68,42 +66,16 @@ class CollectorRepository(
         null
     }
 
-    fun buildJoinRequest(program: ProgramManifest): Pair<PendingJoin, ByteArray> {
-        val collectorKeyPair = SigningKeyPair.generate()
+    /** Joining is purely local: no message to the issuer, no round trip - see SPEC/SPECS.md §6.1. */
+    suspend fun joinProgram(program: ProgramManifest): CardSummary {
         val cardId = UUID.randomUUID().toString()
-        val pending = PendingJoin(program, collectorKeyPair, cardId)
-        val request = CustomerMessage.JoinRequest(
-            programId = program.programId,
-            cardId = cardId,
-            collectorPublicKey = collectorKeyPair.publicKey,
-            requestedAt = Instant.now(),
-        )
-        return pending to request.toWireBytes()
-    }
-
-    suspend fun completeJoin(pending: PendingJoin, cardCertBytes: ByteArray): CardSummary? {
-        val cert = try {
-            CardCertificate.parseAndVerify(cardCertBytes, pending.program.issuerPublicKey)
-        } catch (e: InvalidSignatureException) {
-            return null
-        } catch (e: MalformedMessageException) {
-            return null
-        }
-        if (cert.programId != pending.program.programId ||
-            cert.cardId != pending.cardId ||
-            cert.collectorPublicKey != pending.collectorKeyPair.publicKey
-        ) {
-            return null
-        }
-
         val entity = CollectorCardEntity(
-            cardId = pending.cardId,
-            programId = pending.program.programId,
-            issuerPublicKey = pending.program.issuerPublicKey.bytes,
-            programName = pending.program.name,
-            threshold = pending.program.threshold,
-            reward = pending.program.reward,
-            collectorSeed = pending.collectorKeyPair.seed,
+            cardId = cardId,
+            programId = program.programId,
+            issuerPublicKey = program.issuerPublicKey.bytes,
+            programName = program.name,
+            threshold = program.threshold,
+            reward = program.reward,
             createdAt = System.currentTimeMillis(),
         )
         cardDao.insert(entity)
