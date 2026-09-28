@@ -23,10 +23,10 @@ another platform.
 
 ## Screenshots
 
-*Pending — the app hasn't been run on a device/emulator yet (this was
-built in a sandbox without an Android SDK). See
+*Pending — the app has been built and run on a real device, but
+screenshots haven't been captured yet. See
 [`docs/screenshots/README.md`](docs/screenshots/README.md) for what's
-needed and where they go once someone builds it in Android Studio.*
+needed and where they go.*
 
 ## How it works
 
@@ -56,13 +56,14 @@ for why, and what that does and doesn't protect against).
 fidelity-card/
 ├── crypto/   pure Kotlin/JVM library — signing, verification, wire format
 ├── core/     pure Kotlin/JVM library — stamp/redemption business rules
-└── app/      the Android app (Compose UI, Room, ZXing), depends on both
+├── backup/   pure Kotlin/JVM library — encrypted full-database backup/restore
+└── app/      the Android app (Compose UI, Room, ZXing), depends on all three
 ```
 
-`crypto` and `core` have no Android dependency at all, so they build and
-test with a bare JDK — no emulator, no SDK. That's deliberate: it's what
-lets the protocol and business logic be verified in isolation, and reused
-outside this app if someone wants to.
+`crypto`, `core` and `backup` have no Android dependency at all, so they
+build and test with a bare JDK — no emulator, no SDK. That's deliberate:
+it's what lets the protocol and business logic be verified in isolation,
+and reused outside this app if someone wants to.
 
 ## Building
 
@@ -71,18 +72,21 @@ Requirements: JDK 17+ to build everything; the Android SDK only to build
 
 ```bash
 # Library modules only - no Android SDK needed
-./gradlew :crypto:test :core:test
+./gradlew :crypto:test :core:test :backup:test
 
 # The Android app (needs the Android SDK)
-./gradlew :app:assembleDebug
+./gradlew :app:assembleDebug :app:testDebugUnitTest
 ```
 
 ## Status
 
-Early. The protocol and its crypto/business-rule layers (`:crypto`,
-`:core`) are implemented and tested. The app UI (`:app`) is implemented
-but has not yet been built or run on an actual device — see
-[SPEC/SPECS.md §11](SPEC/SPECS.md) for open questions.
+Early, but functional: the protocol and its crypto/business-rule layers
+(`:crypto`, `:core`, `:backup`) are implemented and tested, and the app
+(`:app`) has been built, installed, and exercised end-to-end (issuing,
+stamping, redeeming, backup/restore) on a real device in Android Studio.
+Not yet submitted to F-Droid or any app store. See
+[TODO.md](TODO.md) for what's tracked as still open, and
+[SPEC/SPECS.md §11](SPEC/SPECS.md) for the spec's own open questions.
 
 ## License
 

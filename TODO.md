@@ -10,7 +10,14 @@ TODO
        fork is still reachable any time via a "Switch mode" action in each list
        screen's top bar - a device can still use both modes (SPEC/SPECS.md §4),
        this only changes the default landing screen.
- * [ ] Create a logo for the app. Maybe we a little stylized stamp.
+ * [x] Create a logo for the app. Maybe we a little stylized stamp: done - a
+       rounded-square stamp outline with a checkmark inside, on a solid
+       teal background (`app/src/main/res/drawable/ic_launcher_*.xml`,
+       `mipmap-anydpi-v26/ic_launcher*.xml`). Adaptive icon only (no legacy
+       raster mipmaps needed - minSdk 26 is exactly when adaptive icons
+       became universal), includes a monochrome layer for Android 13+
+       themed icons. Also shown in-app on `HomeScreen` for brand
+       consistency, not just as the launcher icon.
  * [ ] We should be able to give a little more personnality to the card. ( Like a stamp style, colors, a logo etc...)
 
 ## From the spec (SPEC/SPECS.md)
