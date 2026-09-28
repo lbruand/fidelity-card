@@ -7,7 +7,11 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -41,17 +45,57 @@ object CardStyle {
     val defaultIcon: String = icons.first()
 }
 
-/** A small filled badge showing a card's [color]/[icon] - used anywhere a card/program is listed. */
+/**
+ * A translucent circular chip showing a card's [icon] - for use on a
+ * surface already tinted with that same card's color (a colored list
+ * item or header), so the icon stays legible regardless of exactly which
+ * palette color it's sitting on, rather than a same-color-on-same-color
+ * box that would blend into the background.
+ */
 @Composable
-fun CardStyleBadge(color: Int, icon: String, modifier: Modifier = Modifier, size: androidx.compose.ui.unit.Dp = 40.dp) {
+fun CardStyleBadge(icon: String, modifier: Modifier = Modifier, size: androidx.compose.ui.unit.Dp = 40.dp) {
     Box(
         modifier = modifier
             .size(size)
-            .clip(RoundedCornerShape(size / 3))
-            .background(Color(color)),
+            .clip(CircleShape)
+            .background(Color.White.copy(alpha = 0.25f)),
         contentAlignment = Alignment.Center,
     ) {
         Text(icon, style = MaterialTheme.typography.titleMedium)
+    }
+}
+
+/**
+ * A translucent light "tray" for placing something that itself uses
+ * [CardStyle] colors (e.g. [StampProgressDots]) on top of an
+ * already-color-tinted surface, without the two blending together.
+ */
+@Composable
+fun ColorSurfaceTray(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color.White.copy(alpha = 0.18f))
+            .padding(8.dp),
+    ) {
+        content()
+    }
+}
+
+/** A colored header band for a business/card detail screen: [color] fill, [icon] badge, [title] in white. */
+@Composable
+fun CardColorHeader(color: Int, icon: String, title: String, modifier: Modifier = Modifier) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(Color(color))
+            .padding(20.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        CardStyleBadge(icon, size = 56.dp)
+        Spacer(modifier = Modifier.width(16.dp))
+        Text(title, style = MaterialTheme.typography.headlineSmall, color = Color.White)
     }
 }
 

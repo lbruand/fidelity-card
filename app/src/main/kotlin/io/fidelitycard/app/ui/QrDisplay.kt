@@ -17,10 +17,23 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import io.fidelitycard.app.qr.QrCodec
 
-/** A big, unmissable QR code plus one short line telling the person what to do with it. */
+/**
+ * A big, unmissable QR code plus one short line telling the person what
+ * to do with it. [color]/[centerIcon] apply the program's personalization
+ * (TODO.md "Product / UX") - [centerIcon] should be left `null` for a
+ * size-sensitive payload (see [QrCodec.encodeToBitmap]).
+ */
 @Composable
-fun QrDisplay(bytes: ByteArray, instruction: String, modifier: Modifier = Modifier) {
-    val bitmap = remember(bytes) { QrCodec.encodeToBitmap(bytes) }
+fun QrDisplay(
+    bytes: ByteArray,
+    instruction: String,
+    modifier: Modifier = Modifier,
+    color: Int = android.graphics.Color.BLACK,
+    centerIcon: String? = null,
+) {
+    val bitmap = remember(bytes, color, centerIcon) {
+        QrCodec.encodeToBitmap(bytes, foregroundColor = color, centerIcon = centerIcon)
+    }
 
     Column(
         modifier = modifier.fillMaxWidth().padding(16.dp),

@@ -106,6 +106,10 @@ class RedeemFlowViewModel(private val repository: CollectorRepository, private v
     val state: StateFlow<ExchangeState> = _state
     private var pending: PendingRedemption? = null
 
+    /** For tinting the redemption request QR with the card's own color (TODO.md "Product / UX"). */
+    val card: StateFlow<CardSummary?> = repository.observeCard(cardId)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
     init {
         prepareRequest()
     }

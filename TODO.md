@@ -31,10 +31,35 @@ TODO
        custom image upload were considered and rejected as more than this
        app needs - a fixed palette keeps the picker a two-tap choice and
        every rendering a single simple badge shape.
- * [ ] There should be a bgcolor for the fidcard. The icon and the (text)color 
+ * [x] There should be a bgcolor for the fidcard. The icon and the (text)color
        and bgcolor should reused across the gui. We should use the icon as the
        stamp itself, instead of using the whitetick mark. We should also show
-       the icon and color on the QRCode (icon in the center of the QRcode)
+       the icon and color on the QRCode (icon in the center of the QRcode):
+       done.
+         - List items (`BusinessListScreen`/`CardListScreen`) and detail
+           screens (`CardColorHeader`) now use the program's own `color` as a
+           full background fill, white text/icon on top.
+         - `StampProgressDots` renders a filled stamp as the program's own
+           `icon` on a `color`-filled circle, replacing the generic
+           checkmark - "the icon as the stamp itself." Shown inside a
+           translucent `ColorSurfaceTray` wherever it sits on an
+           already-colored surface, so the dots don't blend into the
+           background behind them.
+         - `QrCodec`/`QrDisplay` gained `foregroundColor`/`centerIcon`
+           support: QR modules tinted with the program's color everywhere,
+           plus the icon rendered in a small white badge at the QR's
+           center for the issuer's Program Manifest/Stamp Token/Redemption
+           Certificate QRs and the collector's Redemption Certificate QR.
+           Center icon deliberately **not** added to the collector's
+           outgoing redemption *request* QR - that payload's size already
+           depends on how many stamps are being redeemed (up to the
+           large-threshold fallback, SPEC §6.3), and a center logo needs
+           high error correction, which costs real capacity; tint-only
+           there to avoid regressing scannability. `CardStyle.colors`
+           (the fixed palette) is all mid/dark-toned Material swatches,
+           chosen so white text/icon overlays stay legible on every one.
+         - No protocol/schema changes - purely a `:app`/UI-layer change,
+           `color`/`icon` were already signed into the Program Manifest.
 
 ## From the spec (SPEC/SPECS.md)
 

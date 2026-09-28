@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -37,6 +38,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -44,7 +46,9 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import io.fidelitycard.app.FidelityApplication
 import io.fidelitycard.app.data.CardSummary
+import io.fidelitycard.app.ui.CardColorHeader
 import io.fidelitycard.app.ui.CardStyleBadge
+import io.fidelitycard.app.ui.ColorSurfaceTray
 import io.fidelitycard.app.ui.QrDisplay
 import io.fidelitycard.app.ui.StampProgressDots
 import io.fidelitycard.app.ui.rememberQrScanLauncher
@@ -99,14 +103,17 @@ fun CardListScreen(onOpenCard: (String) -> Unit, onJoinBusiness: () -> Unit, onS
                     Card(
                         modifier = Modifier.fillMaxWidth().padding(12.dp),
                         onClick = { onOpenCard(card.cardId) },
+                        colors = CardDefaults.cardColors(containerColor = Color(card.color)),
                     ) {
                         Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                            CardStyleBadge(card.color, card.icon)
+                            CardStyleBadge(card.icon)
                             Spacer(modifier = Modifier.width(16.dp))
                             Column {
-                                Text(card.programName, style = MaterialTheme.typography.titleLarge)
+                                Text(card.programName, style = MaterialTheme.typography.titleLarge, color = Color.White)
                                 Spacer(modifier = Modifier.height(8.dp))
-                                StampProgressDots(card.progress)
+                                ColorSurfaceTray {
+                                    StampProgressDots(card.progress, card.color, card.icon)
+                                }
                             }
                         }
                     }
@@ -183,9 +190,11 @@ fun CardDetailScreen(
             modifier = Modifier.fillMaxSize().padding(padding).padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
+            CardColorHeader(c.color, c.icon, c.programName, modifier = Modifier.fillMaxWidth())
+            Spacer(modifier = Modifier.height(24.dp))
             Text(c.reward, style = MaterialTheme.typography.titleMedium)
             Spacer(modifier = Modifier.height(24.dp))
-            StampProgressDots(c.progress)
+            StampProgressDots(c.progress, c.color, c.icon)
             Spacer(modifier = Modifier.height(32.dp))
 
             if (c.progress.isRedeemable) {
@@ -276,9 +285,11 @@ fun RedeemFlowScreen(cardId: String, onBack: () -> Unit, onDone: () -> Unit) {
     val viewModel: RedeemFlowViewModel = viewModel(
         factory = viewModelFactory { initializer { RedeemFlowViewModel(repo, cardId) } },
     )
+    val card by viewModel.card.collectAsState()
     ExchangeFlowScreen(
         title = "Redeem reward",
         state = viewModel.state,
+        qrColor = card?.color ?: android.graphics.Color.BLACK,
         onBack = onBack,
         onDone = onDone,
         onNextTapped = viewModel::onNextTapped,
@@ -291,6 +302,7 @@ fun RedeemFlowScreen(cardId: String, onBack: () -> Unit, onDone: () -> Unit) {
 private fun ExchangeFlowScreen(
     title: String,
     state: StateFlow<ExchangeState>,
+    qrColor: Int,
     onBack: () -> Unit,
     onDone: () -> Unit,
     onNextTapped: () -> Unit,
@@ -311,7 +323,13 @@ private fun ExchangeFlowScreen(
             when (val s = currentState) {
                 ExchangeState.Preparing -> Text("One moment...")
                 is ExchangeState.ShowRequest -> {
-                    QrDisplay(bytes = s.bytes, instruction = s.instruction)
+                    // No centerIcon here on purpose: this QR's payload size
+                    // depends on how many stamps are being redeemed, up to
+                    // the large-threshold fallback (SPEC/SPECS.md §6.3) -
+                    // tint only, so a center logo's extra error-correction
+                    // cost never risks pushing a big redemption over a
+                    // scannable size.
+                    QrDisplay(bytes = s.bytes, instruction = s.instruction, color = qrColor)
                     Button(
                         onClick = {
                             onNextTapped()

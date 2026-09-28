@@ -44,7 +44,10 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import io.fidelitycard.app.FidelityApplication
+import androidx.compose.material3.CardDefaults
+import androidx.compose.ui.graphics.Color
 import io.fidelitycard.app.data.ProgramSummary
+import io.fidelitycard.app.ui.CardColorHeader
 import io.fidelitycard.app.ui.CardStyle
 import io.fidelitycard.app.ui.CardStyleBadge
 import io.fidelitycard.app.ui.ColorPickerRow
@@ -96,13 +99,14 @@ fun BusinessListScreen(onOpenBusiness: (String) -> Unit, onCreateBusiness: () ->
                     Card(
                         modifier = Modifier.fillMaxWidth().padding(12.dp),
                         onClick = { onOpenBusiness(program.programId) },
+                        colors = CardDefaults.cardColors(containerColor = Color(program.color)),
                     ) {
                         Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                            CardStyleBadge(program.color, program.icon)
+                            CardStyleBadge(program.icon)
                             Spacer(modifier = Modifier.width(16.dp))
                             Column {
-                                Text(program.name, style = MaterialTheme.typography.titleLarge)
-                                Text("${program.threshold} stamps -> ${program.reward}")
+                                Text(program.name, style = MaterialTheme.typography.titleLarge, color = Color.White)
+                                Text("${program.threshold} stamps -> ${program.reward}", color = Color.White)
                             }
                         }
                     }
@@ -214,9 +218,13 @@ fun BusinessDetailScreen(programId: String, onBack: () -> Unit) {
             modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
+            program?.let { p ->
+                CardColorHeader(p.color, p.icon, p.name, modifier = Modifier.fillMaxWidth())
+                Spacer(modifier = Modifier.height(16.dp))
+            }
             when (val state = scanState) {
                 is ScanCustomerState.Responding -> {
-                    QrDisplay(bytes = state.bytes, instruction = state.message)
+                    QrDisplay(bytes = state.bytes, instruction = state.message, color = program?.color ?: android.graphics.Color.BLACK, centerIcon = program?.icon)
                     Button(onClick = { viewModel.dismissResponse() }, modifier = Modifier.fillMaxWidth().height(56.dp)) {
                         Text("Done")
                     }
@@ -232,6 +240,8 @@ fun BusinessDetailScreen(programId: String, onBack: () -> Unit) {
                         QrDisplay(
                             bytes = p.programManifestBytes,
                             instruction = "New customers scan this to join \"${p.name}\"",
+                            color = p.color,
+                            centerIcon = p.icon,
                         )
                     }
                     Button(
