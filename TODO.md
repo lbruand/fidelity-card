@@ -204,7 +204,18 @@ TODO
  * [ ] NFC as a second transport alongside QR, for a one-tap exchange instead of
        show-then-scan. The token format is already transport-agnostic, so this
        is protocol-compatible, just a different Android API (SPEC §11).
- * [ ] Work through the F-Droid compliance checklist for real before submitting
-       (SPEC §9): audit every transitive dependency for non-free/tracking code,
-       confirm the build is reproducible, confirm LICENSE matches the F-Droid
-       metadata, confirm no mandatory network access anywhere in the core app.
+ * [x] Worked through the F-Droid compliance checklist for real (SPEC §9, all
+       5 items now checked). Read the full, untruncated `:app:dependencies
+       --configuration releaseRuntimeClasspath` tree (not a grep/tail
+       sample): every resolved artifact is AndroidX/Compose/Room/Navigation,
+       ZXing, Bouncy Castle, Kotlin stdlib/coroutines/serialization, jspecify
+       - no Firebase/Play-Services/analytics/tracking SDK of any kind.
+       Verified no mandatory network access at the strongest level (not
+       "unused" but *absent*) via both the source and Gradle-merged
+       manifests - literally no `INTERNET` permission anywhere in the
+       transitive tree. Confirmed `LICENSE` is unmodified MIT (OSI-approved);
+       no F-Droid metadata to match against yet since the app isn't
+       submitted. Confirmed nothing in the build fights reproducibility: no
+       `signingConfig`/machine-specific paths, `minifyEnabled` unset, static
+       `versionCode`/`versionName` (not git/timestamp-derived), wrapper
+       checked in, no binary blobs checked in.

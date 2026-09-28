@@ -533,13 +533,57 @@ limitation remains.)
 
 ## 9. F-Droid compliance checklist
 
-- [ ] No proprietary blobs / non-free dependencies (verify every transitive
-      dependency, including crypto and QR libraries).
-- [ ] No tracking/analytics SDKs (F-Droid "anti-features" list).
-- [ ] Reproducible build.
-- [ ] OSI-approved license in repo root (`LICENSE`), matching what's
-      declared in the F-Droid metadata.
-- [ ] No mandatory network access for core functionality.
+- [x] No proprietary blobs / non-free dependencies. Verified by reading the
+      full, untruncated `:app:dependencies --configuration
+      releaseRuntimeClasspath` output (not just a truncated tail): every
+      resolved artifact is `androidx.*`, `androidx.compose.*`,
+      `androidx.room.*`, `androidx.navigation.*`, `com.google.zxing:core`
+      (+ `com.journeyapps:zxing-android-embedded`, which just wraps it),
+      `org.bouncycastle:bcprov-jdk18on`, `org.jetbrains.kotlin*`,
+      `org.jetbrains.kotlinx:kotlinx-coroutines-*`/`kotlinx-serialization-*`
+      (transitive, unused directly), `org.jspecify`, `org.jetbrains:annotations`
+      and `com.google.guava:listenablefuture` (a stub artifact pulled in by
+      `androidx.concurrent`, not real Guava). No `com.google.android.gms.*`
+      artifact of any kind resolves into the tree — matches the CI denylist
+      (§10.3) with a full manual read of the tree, not just the grep.
+- [x] No tracking/analytics SDKs. Same dependency-tree read: no Firebase,
+      Crashlytics, Play Services, AdMob, Mixpanel, Amplitude, Sentry,
+      Bugsnag, AppsFlyer or HMS artifact anywhere (checked explicitly, not
+      just absent from what was skimmed). The app also has no first-party
+      telemetry code — nothing in `:app` calls out to a URL or writes usage
+      events anywhere.
+- [x] Reproducible build, to the extent this repo controls it: no
+      `buildTypes`/`signingConfig` block in `app/build.gradle.kts` (so no
+      machine-specific keystore path or env-var-driven signing baked into
+      the build), `minifyEnabled` unset (defaults to `false` — no R8
+      mapping-file nondeterminism to worry about), `versionCode`/
+      `versionName` are static literals (not derived from `git describe`,
+      a build timestamp, or `System.currentTimeMillis()` — grepped for all
+      three and found none in any `.gradle.kts`), no absolute
+      (`/home/...`/`/Users/...`) paths in any Gradle file, no binary
+      `.aar`/`.jar` checked into the repo (every dependency resolves from
+      `google()`/`mavenCentral()`, no `flatDir`), and the Gradle wrapper
+      (`gradle/wrapper/gradle-wrapper.properties`) is checked in so the
+      build tool version itself is pinned. F-Droid's own build server does
+      the actual reproducibility verification once submitted; this is
+      "nothing in the repo works against that."
+- [x] OSI-approved license in repo root: `LICENSE` is the standard MIT
+      license text, present and unmodified. There's no F-Droid metadata
+      (`fdroiddata` submission YAML) yet to match against, since the app
+      hasn't been submitted — that's a future step at actual submission
+      time, not something resolvable from inside this repo today.
+- [x] No mandatory network access for core functionality. Confirmed at the
+      strongest level: not merely "unused," but *absent*. Both the source
+      `app/src/main/AndroidManifest.xml` and the Gradle-merged manifest
+      (`app/build/intermediates/merged_manifests/debug/processDebugManifest/AndroidManifest.xml`,
+      which is what actually catches a permission injected transitively by
+      a dependency's own manifest) declare only `CAMERA` plus the
+      AndroidX-injected, self-scoped
+      `io.fidelitycard.app.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION` — no
+      `INTERNET`/`ACCESS_NETWORK_STATE` anywhere in the full transitive
+      tree. There is no optional network feature yet either (§10's sync
+      service is unbuilt), so this is currently "no network access at
+      all," a stronger property than the checklist requires.
 
 ## 10. Build system, dependency management, and CI/CD
 
