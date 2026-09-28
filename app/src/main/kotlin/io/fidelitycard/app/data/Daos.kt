@@ -155,3 +155,18 @@ interface CollectorStampDao {
     @Query("DELETE FROM collector_stamps")
     suspend fun deleteAll()
 }
+
+@Dao
+interface CollectorRedeemedStampDao {
+    @Insert
+    suspend fun insertAll(stamps: List<CollectorRedeemedStampEntity>)
+
+    @Query("SELECT stampIdHex FROM collector_redeemed_stamps WHERE programId = :programId AND stampIdHex IN (:stampIdHexes)")
+    suspend fun findRedeemed(programId: String, stampIdHexes: List<String>): List<String>
+
+    @Query("SELECT * FROM collector_redeemed_stamps")
+    suspend fun getAll(): List<CollectorRedeemedStampEntity>
+
+    @Query("DELETE FROM collector_redeemed_stamps")
+    suspend fun deleteAll()
+}

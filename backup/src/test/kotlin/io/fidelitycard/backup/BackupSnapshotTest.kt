@@ -55,6 +55,13 @@ class BackupSnapshotTest {
                 mintedAt = 1_700_000_004_000L,
             ),
         ),
+        collectorRedeemedStamps = listOf(
+            CollectorRedeemedStampRow(
+                programId = "PROGRAM2",
+                stampIdHex = "ffeeddccbbaa99887766554433221100",
+                redeemedAt = 1_700_000_005_000L,
+            ),
+        ),
     )
 
     @Test
@@ -66,7 +73,7 @@ class BackupSnapshotTest {
 
     @Test
     fun `round trips when every table is empty`() {
-        val empty = BackupSnapshot(emptyList(), emptyList(), emptyList(), emptyList(), emptyList())
+        val empty = BackupSnapshot(emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), emptyList())
 
         assertEquals(empty, BackupSnapshot.decode(empty.encode()))
     }

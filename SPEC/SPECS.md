@@ -373,9 +373,17 @@ Collector device                       Issuer device
                                         issues Redemption Certificate,
                                         records these ids as redeemed
   scans it              <-------------   [shows Redemption Certificate QR]
-  verifies sig, deletes the exact
-  stamp ids it submitted
+  verifies sig, records the exact
+  stamp ids it submitted as redeemed
+  in its own CollectorRedeemedStamp
+  memory, then deletes them
 ```
+
+Recording redeemed ids on the collector's own side too (not just deleting
+them) is what stops a stamp QR the collector still has lying around after
+redeeming it - a screenshot, the issuer's screen not having moved on yet -
+from being re-scanned and silently re-accepted as a fresh stamp toward the
+*next* reward (§7.1).
 
 Each `proof` is a **Compact Stamp Proof** (CRYPTO_WIRE_FORMAT.md §5.2.1):
 `stamp_id || issued_at || signature`, 88 bytes, with `program_id`
@@ -426,6 +434,10 @@ CollectorCard(program_id, card_id PK, issuer_pubkey, program_name, threshold,
 CollectorStamp(card_id, stamp_id_hex, stamp_token_bytes)  -- PK (card_id, stamp_id_hex);
               card_id here is also purely local grouping (which of my
               cards this stamp counts toward), never transmitted
+CollectorRedeemedStamp(program_id, stamp_id_hex, redeemed_at)  -- PK (program_id, stamp_id_hex),
+              this device's own memory of stamps it has already redeemed,
+              scoped per program (not per card_id, so it survives "Leave
+              this business") - see §7.1
 ```
 
 There is no `IssuedCard` table any more: the issuer has no concept of
@@ -464,7 +476,8 @@ note and `TODO.md`.
 | Threat | Mitigation |
 |---|---|
 | Forge a stamp without issuer's key | Ed25519 signature verification |
-| Replay an old stamp QR (photo of a screen) | Deduplicated by `stamp_id` on the collector's own device; redeeming it twice is separately blocked (see below) |
+| Re-scanning a stamp QR this device already holds, unredeemed (a duplicate scan, a re-scanned screenshot) | Deduplicated by `stamp_id` in `CollectorStamp` - a harmless no-op |
+| Re-scanning a stamp QR this device has already *redeemed* (an old screenshot, the issuer's screen not having moved on) | Rejected immediately by `CollectorRedeemedStamp` - this device's own memory of what it has redeemed, checked before accepting any stamp. Without this, the stamp would be silently re-accepted toward the *next* reward, only failing (the whole redemption batch, not just the one bad stamp) when eventually submitted and caught by the issuer's own spent-set - immediate, specific rejection is strictly better |
 | A leaked/copied stamp (photo, screen recording, a compromised collector device) is redeemed by someone other than its original recipient | **Not prevented by the protocol** — accepted by design (§5.2): a stamp isn't bound to any collector/card id, so its value lives in holding its bytes, like a physical stamp card. Whoever redeems `threshold`-many unspent copies first gets the reward; the deciding factor is redemption order, not original ownership |
 | Issuer denies the deal terms after the fact | Program QR terms are signed and kept by the collector |
 | Same purchase minting more than one stamp (double issuance) | **Not prevented by the protocol** — issuance is unconditional by design (§5.2/§6.2); this is an explicit operational/trust matter for the issuer, the same as a paper card, not a cryptographic guarantee |
@@ -686,6 +699,20 @@ CI never needs an Android SDK or emulator:
   ~36), so the size cost was not the deciding factor. `ProgramInvite`
   (manifest only, no stamp) stays available for joining without a
   purchase - a poster, scanned any time, no cashier involved.
+- ~~**Rescanning an already-redeemed stamp**~~ — resolved: a real bug, not
+  a hypothetical - the collector deleted a stamp on redemption but never
+  recorded that it had been redeemed, so re-scanning the same stamp QR
+  afterward (a screenshot, the issuer's screen not having moved on) was
+  silently re-accepted as a fresh stamp toward the *next* reward. Fixed
+  with `CollectorRedeemedStampEntity` (§7/§7.1): the collector now keeps
+  its own memory of what it has redeemed, scoped per program (not per
+  `card_id`, so "Leave this business" can't be used to launder an
+  already-redeemed stamp back into a usable one) and checked before
+  accepting any stamp. The issuer's own spent-set would eventually have
+  caught the same stamp at actual redemption time, but only by rejecting
+  the whole batch it was mixed into, with no way for the collector to
+  identify which one was bad - this catches it immediately, specifically,
+  on the collector's own side.
 
 ## 12. License
 

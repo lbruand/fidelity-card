@@ -3,6 +3,7 @@ package io.fidelitycard.app.data
 import io.fidelitycard.app.qr.CustomerMessage
 import io.fidelitycard.app.qr.IssuerMessage
 import io.fidelitycard.crypto.ProgramManifest
+import io.fidelitycard.crypto.RedemptionCertificate
 import io.fidelitycard.crypto.SigningKeyPair
 import io.fidelitycard.crypto.StampToken
 import kotlinx.coroutines.runBlocking
@@ -23,7 +24,8 @@ class CollectorRepositoryTest {
     private val programId = manifest.programId
     private val cardDao = FakeCollectorCardDao()
     private val stampDao = FakeCollectorStampDao()
-    private val repository = CollectorRepository(cardDao, stampDao)
+    private val redeemedStampDao = FakeCollectorRedeemedStampDao()
+    private val repository = CollectorRepository(cardDao, stampDao, redeemedStampDao)
 
     private suspend fun seedCard(threshold: Int) {
         cardDao.insert(
@@ -119,6 +121,53 @@ class CollectorRepositoryTest {
 
         assertInstanceOf(ScanBusinessOutcome.Rejected::class.java, outcome)
         assertNull(cardDao.findByProgramId(otherManifest.programId))
+    }
+
+    @Test
+    fun `a stamp already redeemed by this device is rejected if scanned again, not silently re-added`() = runBlocking {
+        seedCard(threshold = 1)
+        val stamp = StampToken.mint(issuer, programId)
+        val grantBytes = IssuerMessage.StampGrant(manifest.toWireBytes(), stamp.toWireBytes()).toWireBytes()
+        assertInstanceOf(ScanBusinessOutcome.Stamped::class.java, repository.acceptIssuerMessage(grantBytes))
+        val cert = RedemptionCertificate.issue(issuer, programId, redeemedCount = 1)
+        val redeemed = repository.acceptRedemptionResponse(
+            CARD_ID,
+            PendingRedemption(listOf(stamp.stampId.toHex()), ByteArray(0)),
+            cert.toWireBytes(),
+        )
+        assertInstanceOf(RedemptionAcceptOutcome.Accepted::class.java, redeemed)
+
+        // A screenshot of the same stamp QR, or the issuer's screen not
+        // having moved on - re-scanning it must not silently count toward
+        // the *next* reward.
+        val replay = repository.acceptIssuerMessage(grantBytes)
+
+        assertInstanceOf(ScanBusinessOutcome.Rejected::class.java, replay)
+        Unit
+    }
+
+    @Test
+    fun `the already-redeemed memory survives leaving and rejoining the same business`() = runBlocking {
+        seedCard(threshold = 1)
+        val stamp = StampToken.mint(issuer, programId)
+        val grantBytes = IssuerMessage.StampGrant(manifest.toWireBytes(), stamp.toWireBytes()).toWireBytes()
+        repository.acceptIssuerMessage(grantBytes)
+        val cert = RedemptionCertificate.issue(issuer, programId, redeemedCount = 1)
+        repository.acceptRedemptionResponse(
+            CARD_ID,
+            PendingRedemption(listOf(stamp.stampId.toHex()), ByteArray(0)),
+            cert.toWireBytes(),
+        )
+
+        repository.leaveBusiness(CARD_ID)
+        // Rejoining creates a brand new local card_id - the redeemed-stamp
+        // memory must not be keyed by that (§7: it would reset to empty),
+        // or "leave and rejoin" would be a way to launder an
+        // already-redeemed stamp back into a usable one.
+        val rejoinAndReplay = repository.acceptIssuerMessage(grantBytes)
+
+        assertInstanceOf(ScanBusinessOutcome.Rejected::class.java, rejoinAndReplay)
+        Unit
     }
 
     @Test

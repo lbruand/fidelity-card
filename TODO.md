@@ -183,6 +183,24 @@ TODO
        center icon needs) - well inside what this app already asks people
        to scan for a large redemption (up to version ~36, SPEC §6.3), so
        size was not the deciding factor either way (SPEC §6.1/§6.2/§11).
+ * [x] ~~Rescanning an already-redeemed stamp~~ — fixed a real bug (user-reported):
+       the collector deleted a stamp from `CollectorStampEntity` on redemption but
+       never recorded that it *had been* redeemed, so re-scanning the same stamp
+       QR afterward (a screenshot, the issuer's screen not having moved on) was
+       silently re-accepted as a fresh stamp toward the *next* reward. Fixed with
+       a new `CollectorRedeemedStampEntity`/`CollectorRedeemedStampDao` (DB
+       version 7 -> 8, `MIGRATION_7_8`) - the collector's own memory of what it
+       has redeemed, scoped per program (not per `card_id`, so "Leave this
+       business" can't launder an already-redeemed stamp back into a usable one
+       by resetting the memory), checked in
+       `CollectorRepository.acceptStampGrant` before accepting any stamp, and
+       populated in `acceptRedemptionResponse` alongside the existing delete.
+       Backup format bumped 4 -> 5 (`CollectorRedeemedStampRow`) so this memory
+       survives export/restore too. The issuer's own spent-set would eventually
+       have caught the same stamp at actual redemption time, just less
+       precisely - rejecting the whole batch it was mixed into with no way to
+       tell which stamp was bad; this catches it immediately and specifically,
+       on the collector's own side (SPEC §7/§7.1/§11).
  * [ ] NFC as a second transport alongside QR, for a one-tap exchange instead of
        show-then-scan. The token format is already transport-agnostic, so this
        is protocol-compatible, just a different Android API (SPEC §11).

@@ -3,7 +3,7 @@ package io.fidelitycard.backup
 import io.fidelitycard.crypto.wire.WireReader
 import io.fidelitycard.crypto.wire.WireWriter
 
-private const val FORMAT_VERSION = 4
+private const val FORMAT_VERSION = 5
 private const val KEY_LENGTH_BYTES = 32
 
 /**
@@ -26,10 +26,13 @@ private const val KEY_LENGTH_BYTES = 32
  * from [RedeemedStampRow]/[IssuerMintedStampRow] and remove the
  * `issued_cards` table entirely (SPEC/SPECS.md §4/§5.2 - a Stamp Token
  * isn't bound to a collector identity any more, so the issuer has no
- * concept of "cards it has seen"). An older-version backup file is
- * rejected outright rather than read with defaulted/dropped fields -
- * simpler, and this early pre-release there's no real backup file anyone
- * needs read back.
+ * concept of "cards it has seen"), then 4 -> 5 to add
+ * [collectorRedeemedStamps] - the collector's own memory of which stamps
+ * it has already redeemed (SPEC/SPECS.md §6.3/§7.1), so restoring an
+ * older backup can't un-block an already-redeemed stamp's QR. An
+ * older-version backup file is rejected outright rather than read with
+ * defaulted/dropped fields - simpler, and this early pre-release there's
+ * no real backup file anyone needs read back.
  */
 data class BackupSnapshot(
     val issuerPrograms: List<IssuerProgramRow>,
@@ -37,6 +40,7 @@ data class BackupSnapshot(
     val collectorCards: List<CollectorCardRow>,
     val collectorStamps: List<CollectorStampRow>,
     val issuerMintedStamps: List<IssuerMintedStampRow>,
+    val collectorRedeemedStamps: List<CollectorRedeemedStampRow>,
 ) {
     fun encode(): ByteArray {
         val writer = WireWriter().writeByte(FORMAT_VERSION)
@@ -45,6 +49,7 @@ data class BackupSnapshot(
         writer.writeTable(collectorCards) { it.writeTo(writer) }
         writer.writeTable(collectorStamps) { it.writeTo(writer) }
         writer.writeTable(issuerMintedStamps) { it.writeTo(writer) }
+        writer.writeTable(collectorRedeemedStamps) { it.writeTo(writer) }
         return writer.toByteArray()
     }
 
@@ -63,6 +68,7 @@ data class BackupSnapshot(
                 collectorCards = reader.readTable { CollectorCardRow.readFrom(reader) },
                 collectorStamps = reader.readTable { CollectorStampRow.readFrom(reader) },
                 issuerMintedStamps = reader.readTable { IssuerMintedStampRow.readFrom(reader) },
+                collectorRedeemedStamps = reader.readTable { CollectorRedeemedStampRow.readFrom(reader) },
             )
             reader.requireFullyConsumed()
             return snapshot
@@ -257,5 +263,27 @@ class CollectorStampRow(
     companion object {
         internal fun readFrom(reader: WireReader): CollectorStampRow =
             CollectorStampRow(reader.readString(), reader.readString(), reader.readVarBytes())
+    }
+}
+
+/**
+ * A stamp id this device has already redeemed - this side's own memory of
+ * "spent", independent of the issuer's (SPEC/SPECS.md §6.3/§7.1), scoped
+ * per program rather than per card so it survives "Leave this business".
+ */
+data class CollectorRedeemedStampRow(
+    val programId: String,
+    val stampIdHex: String,
+    val redeemedAt: Long,
+) {
+    internal fun writeTo(writer: WireWriter) {
+        writer.writeString(programId)
+        writer.writeString(stampIdHex)
+        writer.writeInt64(redeemedAt)
+    }
+
+    companion object {
+        internal fun readFrom(reader: WireReader): CollectorRedeemedStampRow =
+            CollectorRedeemedStampRow(reader.readString(), reader.readString(), reader.readInt64())
     }
 }

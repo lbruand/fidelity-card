@@ -73,3 +73,18 @@ val MIGRATION_6_7: Migration = Migration(6, 7) { db ->
     db.execSQL("DROP TABLE `issuer_minted_stamps`")
     db.execSQL("ALTER TABLE `issuer_minted_stamps_new` RENAME TO `issuer_minted_stamps`")
 }
+
+/**
+ * Adds [CollectorRedeemedStampEntity] - the collector's own memory of
+ * which stamp ids it has already redeemed, so re-scanning an
+ * already-redeemed stamp's QR (a screenshot, a stale display) is rejected
+ * immediately instead of being silently re-accepted as a fresh stamp
+ * (see that entity's doc for the full reasoning). A brand new table, no
+ * data to migrate.
+ */
+val MIGRATION_7_8: Migration = Migration(7, 8) { db ->
+    db.execSQL(
+        "CREATE TABLE IF NOT EXISTS `collector_redeemed_stamps` (`programId` TEXT NOT NULL, " +
+            "`stampIdHex` TEXT NOT NULL, `redeemedAt` INTEGER NOT NULL, PRIMARY KEY(`programId`, `stampIdHex`))",
+    )
+}

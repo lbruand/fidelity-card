@@ -75,6 +75,7 @@ sealed interface RedemptionAcceptOutcome {
 class CollectorRepository(
     private val cardDao: CollectorCardDao,
     private val stampDao: CollectorStampDao,
+    private val redeemedStampDao: CollectorRedeemedStampDao,
 ) {
 
     fun observeCards(): Flow<List<CardSummary>> =
@@ -166,7 +167,19 @@ class CollectorRepository(
             return ScanBusinessOutcome.Rejected("That stamp is for a different business")
         }
 
-        stampDao.insert(CollectorStampEntity(card.cardId, stamp.stampId.toHex(), stampBytes))
+        val stampIdHex = stamp.stampId.toHex()
+        if (redeemedStampDao.findRedeemed(card.programId, listOf(stampIdHex)).isNotEmpty()) {
+            // Expected occasionally: a re-scanned screenshot, or the
+            // issuer's screen not having moved on from the last stamp it
+            // showed. Caught here, immediately, rather than letting it
+            // silently re-join the held pool and only surface later as a
+            // whole redemption batch failing for an unrelated-looking
+            // reason (see CollectorRedeemedStampEntity's doc).
+            Log.w(TAG, "Stamp rejected: already redeemed by this device (program=${card.programId})")
+            return ScanBusinessOutcome.Rejected("You've already redeemed this stamp")
+        }
+
+        stampDao.insert(CollectorStampEntity(card.cardId, stampIdHex, stampBytes))
         val newCount = stampDao.findAllForCard(card.cardId).size
         return ScanBusinessOutcome.Stamped(card.cardId, CardProgress.compute(newCount, card.threshold), justJoined)
     }
@@ -235,6 +248,8 @@ class CollectorRepository(
             return RedemptionAcceptOutcome.Rejected("That confirmation is for a different business")
         }
 
+        val redeemedAt = System.currentTimeMillis()
+        redeemedStampDao.insertAll(pending.stampIdHexes.map { CollectorRedeemedStampEntity(card.programId, it, redeemedAt) })
         stampDao.deleteByIds(cardId, pending.stampIdHexes)
         return RedemptionAcceptOutcome.Accepted
     }

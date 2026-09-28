@@ -91,11 +91,38 @@ data class CollectorCardEntity(
  * exists only here, never on the wire. Kept (wire bytes and all) until
  * it's redeemed, since a redemption request must re-present the signed
  * tokens, not just the fact that they were once accepted; deleted outright
- * once redeemed rather than tracked as spent.
+ * once redeemed - what stops a redeemed stamp from being re-accepted is
+ * [CollectorRedeemedStampEntity], not this table.
  */
 @Entity(tableName = "collector_stamps", primaryKeys = ["cardId", "stampIdHex"])
 data class CollectorStampEntity(
     val cardId: String,
     val stampIdHex: String,
     val stampTokenBytes: ByteArray,
+)
+
+/**
+ * A stamp id this device has already redeemed - this side's own memory of
+ * "spent", independent of the issuer's (SPEC/SPECS.md §6.3/§7.1). Without
+ * this, a stamp QR the collector still has lying around after redeeming it
+ * (a screenshot, the issuer's screen not having moved on yet) could be
+ * re-scanned and silently re-accepted as a fresh stamp toward the *next*
+ * reward - the issuer's own spent-set would eventually catch it, but only
+ * at the final redemption attempt, rejecting the whole batch it was mixed
+ * into with no way for this device to tell which stamp was the bad one.
+ * Checked before accepting any stamp, not just at redemption time, so the
+ * rejection is immediate and points at the actual culprit.
+ *
+ * Scoped per **program**, not per [CollectorCardEntity.cardId]: a stamp
+ * isn't bound to a card (§5.2), and `cardId` is a locally-generated string
+ * that gets discarded on "Leave this business" - if this were keyed by
+ * cardId instead, leaving and rejoining the same program would wipe this
+ * memory and let old, already-redeemed stamp QRs work again. It is
+ * deliberately never cleared by leaving a business, for the same reason.
+ */
+@Entity(tableName = "collector_redeemed_stamps", primaryKeys = ["programId", "stampIdHex"])
+data class CollectorRedeemedStampEntity(
+    val programId: String,
+    val stampIdHex: String,
+    val redeemedAt: Long,
 )

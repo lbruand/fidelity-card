@@ -67,6 +67,22 @@ class FakeIssuerMintedStampDao : IssuerMintedStampDao {
     override suspend fun deleteAll() = rows.clear()
 }
 
+class FakeCollectorRedeemedStampDao : CollectorRedeemedStampDao {
+    private val rows = mutableListOf<CollectorRedeemedStampEntity>()
+
+    override suspend fun insertAll(stamps: List<CollectorRedeemedStampEntity>) {
+        rows += stamps
+    }
+
+    override suspend fun findRedeemed(programId: String, stampIdHexes: List<String>): List<String> =
+        rows.filter { it.programId == programId && it.stampIdHex in stampIdHexes }
+            .map { it.stampIdHex }
+
+    override suspend fun getAll(): List<CollectorRedeemedStampEntity> = rows.toList()
+
+    override suspend fun deleteAll() = rows.clear()
+}
+
 class FakeCollectorCardDao : CollectorCardDao {
     private val rows = mutableMapOf<String, CollectorCardEntity>()
 

@@ -6,6 +6,7 @@ import io.fidelitycard.backup.BackupDecryptionException
 import io.fidelitycard.backup.BackupEncryption
 import io.fidelitycard.backup.BackupSnapshot
 import io.fidelitycard.backup.CollectorCardRow
+import io.fidelitycard.backup.CollectorRedeemedStampRow
 import io.fidelitycard.backup.CollectorStampRow
 import io.fidelitycard.backup.IssuerMintedStampRow
 import io.fidelitycard.backup.IssuerProgramRow
@@ -35,6 +36,7 @@ class BackupRepository(private val database: FidelityCardDatabase) {
             collectorCards = database.collectorCardDao().getAll().map { it.toRow() },
             collectorStamps = database.collectorStampDao().getAll().map { it.toRow() },
             issuerMintedStamps = database.issuerMintedStampDao().getAll().map { it.toRow() },
+            collectorRedeemedStamps = database.collectorRedeemedStampDao().getAll().map { it.toRow() },
         )
         return BackupEncryption.encrypt(snapshot.encode(), passphrase)
     }
@@ -59,12 +61,14 @@ class BackupRepository(private val database: FidelityCardDatabase) {
             database.collectorCardDao().deleteAll()
             database.collectorStampDao().deleteAll()
             database.issuerMintedStampDao().deleteAll()
+            database.collectorRedeemedStampDao().deleteAll()
 
             database.issuerProgramDao().insertAll(snapshot.issuerPrograms.map { it.toEntity() })
             database.redeemedStampDao().insertAll(snapshot.redeemedStamps.map { it.toEntity() })
             database.collectorCardDao().insertAll(snapshot.collectorCards.map { it.toEntity() })
             database.collectorStampDao().insertAll(snapshot.collectorStamps.map { it.toEntity() })
             database.issuerMintedStampDao().insertAll(snapshot.issuerMintedStamps.map { it.toEntity() })
+            database.collectorRedeemedStampDao().insertAll(snapshot.collectorRedeemedStamps.map { it.toEntity() })
         }
         return BackupImportOutcome.Success
     }
@@ -92,4 +96,8 @@ class BackupRepository(private val database: FidelityCardDatabase) {
     private fun IssuerMintedStampEntity.toRow() = IssuerMintedStampRow(programId, stampIdHex, mintedAt)
 
     private fun IssuerMintedStampRow.toEntity() = IssuerMintedStampEntity(programId, stampIdHex, mintedAt)
+
+    private fun CollectorRedeemedStampEntity.toRow() = CollectorRedeemedStampRow(programId, stampIdHex, redeemedAt)
+
+    private fun CollectorRedeemedStampRow.toEntity() = CollectorRedeemedStampEntity(programId, stampIdHex, redeemedAt)
 }
