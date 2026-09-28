@@ -1,6 +1,8 @@
 package io.fidelitycard.app
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -13,6 +15,7 @@ import io.fidelitycard.app.collector.CardListScreen
 import io.fidelitycard.app.collector.JoinBusinessScreen
 import io.fidelitycard.app.collector.RedeemFlowScreen
 import io.fidelitycard.app.collector.StampFlowScreen
+import io.fidelitycard.app.data.AppMode
 import io.fidelitycard.app.issuer.BusinessDetailScreen
 import io.fidelitycard.app.issuer.BusinessListScreen
 import io.fidelitycard.app.issuer.CreateBusinessScreen
@@ -38,12 +41,32 @@ private object Routes {
 @Composable
 fun FidelityCardApp() {
     val navController: NavHostController = rememberNavController()
+    val context = LocalContext.current
+    val modePreference = remember {
+        (context.applicationContext as FidelityApplication).modePreference
+    }
+    // Skips the "who are you" fork on every launch once a mode has been
+    // picked once (TODO.md "Product / UX") - HOME stays reachable via each
+    // list screen's "Switch mode" action, it's just no longer the default
+    // landing screen. A device can still use both modes (SPEC/SPECS.md
+    // §4); this only decides which one opens by default.
+    val startDestination = when (modePreference.mode) {
+        AppMode.ISSUER -> Routes.BUSINESS_LIST
+        AppMode.COLLECTOR -> Routes.CARD_LIST
+        null -> Routes.HOME
+    }
 
-    NavHost(navController = navController, startDestination = Routes.HOME) {
+    NavHost(navController = navController, startDestination = startDestination) {
         composable(Routes.HOME) {
             HomeScreen(
-                onOpenBusinesses = { navController.navigate(Routes.BUSINESS_LIST) },
-                onOpenCards = { navController.navigate(Routes.CARD_LIST) },
+                onOpenBusinesses = {
+                    modePreference.mode = AppMode.ISSUER
+                    navController.navigate(Routes.BUSINESS_LIST) { popUpTo(Routes.HOME) { inclusive = true } }
+                },
+                onOpenCards = {
+                    modePreference.mode = AppMode.COLLECTOR
+                    navController.navigate(Routes.CARD_LIST) { popUpTo(Routes.HOME) { inclusive = true } }
+                },
                 onOpenBackup = { navController.navigate(Routes.BACKUP) },
             )
         }
@@ -55,6 +78,7 @@ fun FidelityCardApp() {
             BusinessListScreen(
                 onOpenBusiness = { programId -> navController.navigate(Routes.businessDetail(programId)) },
                 onCreateBusiness = { navController.navigate(Routes.CREATE_BUSINESS) },
+                onSwitchMode = { navController.navigate(Routes.HOME) },
             )
         }
         composable(Routes.CREATE_BUSINESS) {
@@ -79,6 +103,7 @@ fun FidelityCardApp() {
             CardListScreen(
                 onOpenCard = { cardId -> navController.navigate(Routes.cardDetail(cardId)) },
                 onJoinBusiness = { navController.navigate(Routes.JOIN_BUSINESS) },
+                onSwitchMode = { navController.navigate(Routes.HOME) },
             )
         }
         composable(Routes.JOIN_BUSINESS) {

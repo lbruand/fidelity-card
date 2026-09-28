@@ -25,6 +25,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -49,7 +50,7 @@ private fun issuerRepository() =
     (LocalContext.current.applicationContext as FidelityApplication).issuerRepository
 
 @Composable
-fun BusinessListScreen(onOpenBusiness: (String) -> Unit, onCreateBusiness: () -> Unit) {
+fun BusinessListScreen(onOpenBusiness: (String) -> Unit, onCreateBusiness: () -> Unit, onSwitchMode: () -> Unit) {
     val repo = issuerRepository()
     val viewModel: BusinessListViewModel = viewModel(
         factory = viewModelFactory { initializer { BusinessListViewModel(repo) } },
@@ -57,7 +58,16 @@ fun BusinessListScreen(onOpenBusiness: (String) -> Unit, onCreateBusiness: () ->
     val programs by viewModel.programs.collectAsState()
 
     Scaffold(
-        topBar = { TopAppBar(title = { Text("My businesses") }) },
+        topBar = {
+            TopAppBar(
+                title = { Text("My businesses") },
+                actions = {
+                    IconButton(onClick = onSwitchMode) {
+                        Icon(Icons.Filled.SwapHoriz, contentDescription = "Switch mode")
+                    }
+                },
+            )
+        },
         floatingActionButton = {
             FloatingActionButton(onClick = onCreateBusiness) {
                 Icon(Icons.Filled.Add, contentDescription = "Create a business")

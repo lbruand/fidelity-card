@@ -3,7 +3,13 @@ TODO
 
 ## Product / UX
 
- * [ ] Make the app more simple by treating the collector/issuer mode as settings and not each time.
+ * [x] Make the app more simple by treating the collector/issuer mode as settings and
+       not each time: done. `ModePreference` (plain SharedPreferences) remembers the
+       last-used mode and the app now opens straight into `BusinessListScreen` /
+       `CardListScreen`, skipping `HomeScreen`'s fork after the first launch. The
+       fork is still reachable any time via a "Switch mode" action in each list
+       screen's top bar - a device can still use both modes (SPEC/SPECS.md §4),
+       this only changes the default landing screen.
  * [ ] Create a logo for the app. Maybe we a little stylized stamp.
  * [ ] We should be able to give a little more personnality to the card. ( Like a stamp style, colors, a logo etc...)
 

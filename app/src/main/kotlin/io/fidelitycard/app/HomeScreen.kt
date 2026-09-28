@@ -18,7 +18,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 
-/** The only fork in the whole app: are you the business, or the customer? Everything else follows one path. */
+/**
+ * The only fork in the whole app: are you the business, or the customer?
+ * Everything else follows one path. Only shown on first launch, or when
+ * explicitly requested via a list screen's "Switch mode" action - after an
+ * initial choice, the app opens straight into that mode
+ * (`io.fidelitycard.app.data.ModePreference`, `TODO.md` "Product / UX").
+ */
 @Composable
 fun HomeScreen(onOpenBusinesses: () -> Unit, onOpenCards: () -> Unit, onOpenBackup: () -> Unit) {
     Scaffold { padding: PaddingValues ->

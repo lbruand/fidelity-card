@@ -7,6 +7,7 @@ import io.fidelitycard.app.data.CollectorRepository
 import io.fidelitycard.app.data.FidelityCardDatabase
 import io.fidelitycard.app.data.IssuerRepository
 import io.fidelitycard.app.data.MIGRATION_4_5
+import io.fidelitycard.app.data.ModePreference
 
 /**
  * Manual dependency wiring, on purpose: this app has few enough
@@ -47,4 +48,6 @@ class FidelityApplication : Application() {
     val backupRepository: BackupRepository by lazy {
         BackupRepository(database)
     }
+
+    val modePreference: ModePreference by lazy { ModePreference(this) }
 }

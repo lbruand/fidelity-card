@@ -51,7 +51,10 @@ as FOSS today. This spec proceeds on that basis.
   not needed for the core flow).
 - Single Android app; a device can hold both issuer identities and collector
   cards simultaneously ("Issuer mode" / "Collector mode" are views, not
-  separate installs).
+  separate installs). The app remembers which mode was used last
+  (`io.fidelitycard.app.data.ModePreference`) and opens straight into it,
+  rather than asking on every launch - the choice is still one tap away
+  via each mode's "Switch mode" action.
 - Ship as reproducible-build, FOSS-only-dependency software suitable for
   F-Droid inclusion.
 

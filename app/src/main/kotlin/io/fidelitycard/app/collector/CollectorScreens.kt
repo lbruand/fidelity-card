@@ -15,6 +15,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -58,13 +59,22 @@ private fun BackButton(onBack: () -> Unit) {
 }
 
 @Composable
-fun CardListScreen(onOpenCard: (String) -> Unit, onJoinBusiness: () -> Unit) {
+fun CardListScreen(onOpenCard: (String) -> Unit, onJoinBusiness: () -> Unit, onSwitchMode: () -> Unit) {
     val repo = collectorRepository()
     val viewModel: CardListViewModel = viewModel(factory = viewModelFactory { initializer { CardListViewModel(repo) } })
     val cards by viewModel.cards.collectAsState()
 
     Scaffold(
-        topBar = { TopAppBar(title = { Text("My cards") }) },
+        topBar = {
+            TopAppBar(
+                title = { Text("My cards") },
+                actions = {
+                    IconButton(onClick = onSwitchMode) {
+                        Icon(Icons.Filled.SwapHoriz, contentDescription = "Switch mode")
+                    }
+                },
+            )
+        },
         floatingActionButton = {
             FloatingActionButton(onClick = onJoinBusiness) {
                 Icon(Icons.Filled.Add, contentDescription = "Join a business")
