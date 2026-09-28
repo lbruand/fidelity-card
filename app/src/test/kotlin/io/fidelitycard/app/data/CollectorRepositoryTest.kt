@@ -4,6 +4,7 @@ import io.fidelitycard.app.qr.CustomerMessage
 import io.fidelitycard.crypto.SigningKeyPair
 import io.fidelitycard.crypto.StampToken
 import kotlinx.coroutines.runBlocking
+import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Test
 
@@ -49,6 +50,19 @@ class CollectorRepositoryTest {
 
         assertInstanceOf(StampAcceptOutcome.Accepted::class.java, outcome)
         Unit
+    }
+
+    @Test
+    fun `re-scanning the exact same stamp twice is a harmless no-op, not a crash`() = runBlocking {
+        seedCard(threshold = 5)
+        val stampBytes = StampToken.mint(issuer, PROGRAM_ID).toWireBytes()
+
+        val first = repository.acceptStampResponse(CARD_ID, stampBytes)
+        val second = repository.acceptStampResponse(CARD_ID, stampBytes)
+
+        val firstAccepted = assertInstanceOf(StampAcceptOutcome.Accepted::class.java, first)
+        val secondAccepted = assertInstanceOf(StampAcceptOutcome.Accepted::class.java, second)
+        assertEquals(firstAccepted.progress.stampCount, secondAccepted.progress.stampCount)
     }
 
     @Test

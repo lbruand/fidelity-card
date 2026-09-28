@@ -2,6 +2,7 @@ package io.fidelitycard.app.data
 
 import androidx.room.Dao
 import androidx.room.Insert
+import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import kotlinx.coroutines.flow.Flow
 
@@ -118,7 +119,14 @@ interface CollectorCardDao {
 
 @Dao
 interface CollectorStampDao {
-    @Insert
+    // IGNORE, not the @Insert default (ABORT): stampIdHex is part of the
+    // primary key, and re-scanning a Stamp Token this device already has
+    // (e.g. the issuer's screen still showing the last one, or a stray
+    // double scan) must be a harmless no-op, exactly as SPEC/SPECS.md
+    // §5.2/§6.2 already documented - ABORT instead threw an uncaught
+    // SQLiteConstraintException straight out of the accepting coroutine,
+    // crashing the app.
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insert(stamp: CollectorStampEntity)
 
     @Insert

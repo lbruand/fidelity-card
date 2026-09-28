@@ -96,8 +96,9 @@ class FakeCollectorCardDao : CollectorCardDao {
 class FakeCollectorStampDao : CollectorStampDao {
     private val rows = mutableMapOf<Pair<String, String>, CollectorStampEntity>()
 
+    /** Mirrors the real DAO's `onConflict = IGNORE`: a repeat insert of an existing (cardId, stampIdHex) is a no-op, not an overwrite. */
     override suspend fun insert(stamp: CollectorStampEntity) {
-        rows[stamp.cardId to stamp.stampIdHex] = stamp
+        rows.putIfAbsent(stamp.cardId to stamp.stampIdHex, stamp)
     }
 
     override suspend fun insertAll(stamps: List<CollectorStampEntity>) {
