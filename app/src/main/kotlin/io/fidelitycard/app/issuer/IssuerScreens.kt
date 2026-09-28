@@ -47,6 +47,7 @@ import io.fidelitycard.app.FidelityApplication
 import androidx.compose.material3.CardDefaults
 import androidx.compose.ui.graphics.Color
 import io.fidelitycard.app.data.ProgramSummary
+import io.fidelitycard.app.qr.IssuerMessage
 import io.fidelitycard.app.ui.CardColorHeader
 import io.fidelitycard.app.ui.CardStyle
 import io.fidelitycard.app.ui.CardStyleBadge
@@ -238,7 +239,7 @@ fun BusinessDetailScreen(programId: String, onBack: () -> Unit) {
                 ScanCustomerState.Idle -> {
                     program?.let { p ->
                         QrDisplay(
-                            bytes = p.programManifestBytes,
+                            bytes = IssuerMessage.ProgramInvite(p.programManifestBytes).toWireBytes(),
                             instruction = "New customers scan this to join \"${p.name}\"",
                             color = p.color,
                             centerIcon = p.icon,

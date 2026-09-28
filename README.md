@@ -35,12 +35,15 @@ needed and where they go.*
   Redeeming a reward is the one exchange that needs a reply: **"Scan a
   customer"** reads their redemption request and responds with a signed
   confirmation.
-- **Collector**: scan a business's QR to join — that's it, no reply
-  needed, joining is purely local. Getting a stamp after that is just as
-  simple: scan whatever the business is showing. Progress is shown as
-  filled/empty dots, like a physical punch card. Once enough stamps are
-  collected, claiming the reward is a show-a-QR → scan-their-reply
-  exchange.
+- **Collector**: scan whatever the business is showing — one scan does
+  the right thing either way. Scanning a stamp for a business you haven't
+  joined yet joins you *and* credits the stamp in the same step, so even
+  a brand new customer's very first stamp is a single scan, no separate
+  "join" step first. (Joining without buying anything, e.g. from a
+  poster, still works too — that scan just skips the stamp.) Progress is
+  shown as filled/empty dots, like a physical punch card. Once enough
+  stamps are collected, claiming the reward is a show-a-QR →
+  scan-their-reply exchange.
 
 No Bluetooth, no Wi-Fi, no mobile data needed for any of it.
 

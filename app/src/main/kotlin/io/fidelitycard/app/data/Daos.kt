@@ -107,6 +107,14 @@ interface CollectorCardDao {
     @Query("SELECT * FROM collector_cards WHERE cardId = :cardId")
     suspend fun findById(cardId: String): CollectorCardEntity?
 
+    // One card per program per device, going forward (io.fidelitycard.
+    // app.data.CollectorRepository.acceptIssuerMessage resolves-or-creates
+    // by this before ever inserting a new one) - LIMIT 1 defensively, in
+    // case a device already has pre-existing duplicate joins from before
+    // that policy existed.
+    @Query("SELECT * FROM collector_cards WHERE programId = :programId LIMIT 1")
+    suspend fun findByProgramId(programId: String): CollectorCardEntity?
+
     @Query("SELECT * FROM collector_cards")
     suspend fun getAll(): List<CollectorCardEntity>
 

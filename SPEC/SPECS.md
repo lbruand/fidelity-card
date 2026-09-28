@@ -278,49 +278,82 @@ consumed. Joining (§6.1) and stamping (§6.2) are both a single one-way
 scan, no reply — the issuer never needs to learn anything from the
 collector to produce either a Program Manifest or a Stamp Token.
 
+Neither exchange is a `:crypto` message type of its own - the issuer's
+screen always shows one of two small app-level containers,
+`IssuerMessage.ProgramInvite` or `IssuerMessage.StampGrant`, each just
+carrying already-independently-signed bytes (a Program Manifest, a Stamp
+Token). A leading tag byte, distinct from both `:crypto`'s own type tags
+and the collector's `CustomerMessage` tag space (§6.3), is what lets the
+collector's single scanner tell which one it's looking at.
+
 ### 6.1 Joining a program
 
 ```
 Issuer device                          Collector device
-  [shows Program QR]  -------------->   scans it, verifies its signature
-                                         against its own embedded
-                                         issuer_pubkey (self-signed, so
-                                         nothing to pin against except the
-                                         QR's own signature - see §5.1)
+  [shows ProgramInvite QR]  --------->  scans it, verifies the manifest's
+                                         self-signature against its own
+                                         embedded issuer_pubkey (nothing to
+                                         pin against except the QR's own
+                                         signature - see §5.1)
                                          generates a card_id locally and
                                          starts tracking a Card Instance
                                          - done, no reply shown, no message
                                          sent back to the issuer at all
 ```
 
-`card_id` never leaves the collector's device at all — the issuer has no
-concept of "cards it has seen" any more (§7). (An earlier revision of this
-spec had the collector generate a keypair and send a "Join Request" the
-issuer would sign into a Card Certificate before the collector trusted
-anything — removed once it became clear that step verified nothing a
-Stamp Token's or Redemption Certificate's own signature doesn't already
-cover on its own; see §4.)
+A `ProgramInvite` carries only the Program Manifest, no stamp - this is
+the "join with no purchase" path: a poster, a sticker on the counter,
+scanned out of curiosity any time, with no cashier involved at all.
+`card_id` never leaves the collector's device - the issuer has no concept
+of "cards it has seen" (§7). (An earlier revision of this spec had the
+collector generate a keypair and send a "Join Request" the issuer would
+sign into a Card Certificate before the collector trusted anything -
+removed once it became clear that step verified nothing a Stamp Token's
+or Redemption Certificate's own signature doesn't already cover on its
+own; see §4.)
 
 ### 6.2 Stamping (award a stamp)
 
 ```
 Issuer device                          Collector device
-  [shows "Stamp Token QR"]  ---------->  scans it
-  unconditionally mints a fresh          verifies sig against the pinned
-  Stamp Token (random stamp_id) the      issuer_pubkey for this program,
-  moment the cashier taps "Give a        stores stamp (keyed by its
-  stamp" for a real purchase - no        stamp_id - a re-scan of the same
-  scan, no input needed first            token is a harmless no-op)
+  [shows StampGrant QR]  ------------>  scans it
+  { manifest_bytes, stamp_bytes }       verifies the manifest, then the
+  unconditionally mints a fresh         stamp against its issuer_pubkey;
+  Stamp Token (random stamp_id) the     if no Card Instance exists yet for
+  moment the cashier taps "Give a       this program_id, creates one from
+  stamp" for a real purchase - no       the manifest first - one scan
+  scan, no input needed first           either way. Stores the stamp
+                                         (keyed by its stamp_id - a
+                                         re-scan of the same grant is a
+                                         harmless no-op)
 ```
 
-A single one-way QR (§5.2): the issuer never needs to learn anything from
-the collector first, because a Stamp Token isn't addressed to anyone in
-particular. Minting is unconditional and stateless per tap — there is no
-count, sequence, or card to check against, so there is nothing to fall out
-of sync (see §5.2 for the two design revisions that got it here, and what
-it deliberately does not protect against: double-issuance is an
+A single one-way QR either way (§5.2): the issuer never needs to learn
+anything from the collector first, because a Stamp Token isn't addressed
+to anyone in particular, and now neither is a `StampGrant` - it always
+carries the manifest too, so a customer's very first-ever stamp needs no
+separate join scan beforehand (a brand new Card Instance is created
+on-the-fly from that same bundled manifest if one doesn't exist yet). This
+was originally two separate steps - join once with a `ProgramInvite`, then
+stamp - dropped in favor of always bundling once it became clear the only
+reason a stamp needed the manifest kept separate was habit, not necessity:
+the manifest is genuinely redundant on every stamp after the first for a
+given card, but measured at ~140 extra bytes (a `StampGrant` is ~255-290
+bytes fully bundled vs. ~120 for a bare Stamp Token; see CRYPTO_WIRE_FORMAT.md
+for the exact Stamp Token/Program Manifest sizes), that's a QR roughly
+2-2.4x denser (e.g. version 8 to version 13-15 at the error-correction
+level a center icon needs) - well within what this app already asks
+people to scan for a large redemption (§6.3, up to version ~36). Minting
+is unconditional and stateless per tap - there is no count, sequence, or
+card to check against, so there is nothing to fall out of sync (see §5.2
+for the design revisions that got the underlying Stamp Token here, and
+what it deliberately does not protect against: double-issuance is an
 operational trust matter, not a protocol check, and neither is who ends up
 holding a given stamp).
+
+One Card Instance per program per device: a repeat `ProgramInvite` or
+`StampGrant` for a program already joined reuses the existing card rather
+than creating a duplicate.
 
 ### 6.3 Redemption
 
@@ -387,7 +420,9 @@ CollectorCard(program_id, card_id PK, issuer_pubkey, program_name, threshold,
               locally-generated string that never leaves this device
               (§4); purely local bookkeeping for this app's own UI, not a
               protocol concept - color/icon copied from the Program
-              Manifest at join time, see §5.1
+              Manifest at join time, see §5.1. At most one row per
+              program_id (§6.1/§6.2): resolved-or-created by program_id
+              on every scan, never blindly inserted
 CollectorStamp(card_id, stamp_id_hex, stamp_token_bytes)  -- PK (card_id, stamp_id_hex);
               card_id here is also purely local grouping (which of my
               cards this stamp counts toward), never transmitted
@@ -637,6 +672,20 @@ CI never needs an Android SDK or emulator:
   there first, not just its original recipient (§7.1) - judged acceptable
   given this app's own stated scope (a free coffee, not a payment
   credential; see §2).
+- ~~**Why does a customer's first stamp need a separate join scan?**~~ —
+  resolved by removing the separate scan: `IssuerMessage.StampGrant`
+  (§6.2) always bundles the Program Manifest alongside the Stamp Token, so
+  the collector can create the Card Instance on the spot if one doesn't
+  exist yet for that `program_id` - a brand new customer's very first
+  stamp is one scan, not two. Measured before deciding, not assumed: the
+  bundle costs ~140 extra bytes per stamp (a `StampGrant` is ~255-290
+  bytes vs. ~120 for a bare Stamp Token), which is a real but small QR
+  density increase (roughly version 8 to version 13-15 at the
+  error-correction level a center icon needs) - well inside what this app
+  already asks people to scan for a large redemption (§6.3, up to version
+  ~36), so the size cost was not the deciding factor. `ProgramInvite`
+  (manifest only, no stamp) stays available for joining without a
+  purchase - a poster, scanned any time, no cashier involved.
 
 ## 12. License
 

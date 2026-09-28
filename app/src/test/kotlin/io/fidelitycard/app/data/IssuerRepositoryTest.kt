@@ -1,6 +1,8 @@
 package io.fidelitycard.app.data
 
 import io.fidelitycard.app.qr.CustomerMessage
+import io.fidelitycard.app.qr.IssuerMessage
+import io.fidelitycard.crypto.ProgramManifest
 import io.fidelitycard.crypto.SigningKeyPair
 import io.fidelitycard.crypto.StampToken
 import kotlinx.coroutines.runBlocking
@@ -36,9 +38,33 @@ class IssuerRepositoryTest {
 
     private suspend fun mintStamps(count: Int): List<ByteArray> =
         (1..count).map {
-            val bytes = repository.mintStamp(PROGRAM_ID)!!
-            StampToken.parseAndVerify(bytes, issuer.publicKey).stampId
+            val bundleBytes = repository.mintStamp(PROGRAM_ID)!!
+            val grant = IssuerMessage.parse(bundleBytes) as IssuerMessage.StampGrant
+            StampToken.parseAndVerify(grant.stampBytes, issuer.publicKey).stampId
         }
+
+    @Test
+    fun `minting a stamp bundles the program manifest alongside it, so a single scan can join and stamp`() = runBlocking {
+        val manifest = ProgramManifest.issue(issuer, "Joe's Coffee", threshold = 1, reward = "Free coffee", color = 0xFF00897B.toInt(), icon = "☕")
+        programDao.insert(
+            IssuerProgramEntity(
+                programId = manifest.programId,
+                name = "Joe's Coffee",
+                threshold = 1,
+                reward = "Free coffee",
+                issuerSeed = issuer.seed,
+                programManifestBytes = manifest.toWireBytes(),
+                createdAt = 0L,
+                color = 0xFF00897B.toInt(),
+                icon = "☕",
+            ),
+        )
+
+        val message = IssuerMessage.parse(repository.mintStamp(manifest.programId)!!)
+
+        val grant = assertInstanceOf(IssuerMessage.StampGrant::class.java, message)
+        assertEquals(manifest.programId, ProgramManifest.parseAndVerify(grant.manifestBytes).programId)
+    }
 
     @Test
     fun `minting a stamp records it in the issuer's minted ledger`() = runBlocking {

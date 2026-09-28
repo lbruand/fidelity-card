@@ -84,6 +84,9 @@ class FakeCollectorCardDao : CollectorCardDao {
 
     override suspend fun findById(cardId: String): CollectorCardEntity? = rows[cardId]
 
+    override suspend fun findByProgramId(programId: String): CollectorCardEntity? =
+        rows.values.firstOrNull { it.programId == programId }
+
     override suspend fun getAll(): List<CollectorCardEntity> = rows.values.toList()
 
     override suspend fun deleteById(cardId: String) {

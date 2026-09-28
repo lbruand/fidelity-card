@@ -2,6 +2,7 @@ package io.fidelitycard.app.data
 
 import android.util.Log
 import io.fidelitycard.app.qr.CustomerMessage
+import io.fidelitycard.app.qr.IssuerMessage
 import io.fidelitycard.core.CardProgress
 import io.fidelitycard.crypto.InvalidSignatureException
 import io.fidelitycard.crypto.ProgramManifest
@@ -35,9 +36,17 @@ data class CardSummary(
     val icon: String,
 )
 
-sealed interface StampAcceptOutcome {
-    data class Accepted(val progress: CardProgress) : StampAcceptOutcome
-    data class Rejected(val reason: String) : StampAcceptOutcome
+/**
+ * What happened after scanning whatever an issuer's screen was showing
+ * (SPEC/SPECS.md §6.1/§6.2): a plain invite (just joins), a stamp grant
+ * for a program this device has no card for yet (creates the card *and*
+ * credits the stamp, in one scan - [justJoined] is `true`), or a stamp
+ * grant for a program already joined (just credits the stamp).
+ */
+sealed interface ScanBusinessOutcome {
+    data class Joined(val cardId: String, val programName: String) : ScanBusinessOutcome
+    data class Stamped(val cardId: String, val progress: CardProgress, val justJoined: Boolean) : ScanBusinessOutcome
+    data class Rejected(val reason: String) : ScanBusinessOutcome
 }
 
 /** The specific stamp ids included in an outgoing redemption request, so the response can be applied precisely. */
@@ -74,73 +83,92 @@ class CollectorRepository(
     fun observeCard(cardId: String): Flow<CardSummary?> =
         cardDao.observeWithStampCount(cardId).map { it?.toSummary() }
 
-    fun parseProgramQr(bytes: ByteArray): ProgramManifest? = try {
-        ProgramManifest.parseAndVerify(bytes)
-    } catch (e: InvalidSignatureException) {
-        // A business's own Program Manifest failing to self-verify is
-        // unusual (unlike a stamp/redemption, there's no "wrong key" case
-        // here - it's self-signed) and worth a real log line.
-        Log.w(TAG, "Scanned program QR did not verify", e)
-        null
-    } catch (e: MalformedMessageException) {
-        // Routine: this is also where scanning any unrelated QR code lands.
-        Log.d(TAG, "Scanned bytes are not a valid program manifest", e)
-        null
-    }
-
-    /** Joining is purely local: no message to the issuer, no round trip - see SPEC/SPECS.md §6.1. */
-    suspend fun joinProgram(program: ProgramManifest): CardSummary {
-        val cardId = UUID.randomUUID().toString()
-        val entity = CollectorCardEntity(
-            cardId = cardId,
-            programId = program.programId,
-            issuerPublicKey = program.issuerPublicKey.bytes,
-            programName = program.name,
-            threshold = program.threshold,
-            reward = program.reward,
-            createdAt = System.currentTimeMillis(),
-            color = program.color,
-            icon = program.icon,
-        )
-        cardDao.insert(entity)
-        return CardSummary(
-            entity.cardId,
-            entity.programId,
-            entity.programName,
-            entity.reward,
-            CardProgress.compute(0, entity.threshold),
-            entity.color,
-            entity.icon,
-        )
-    }
-
     /**
-     * Accepts whatever the issuer's screen is showing directly - a single
-     * scan, no request sent first (SPEC/SPECS.md §6.2): a Stamp Token
-     * isn't addressed to any particular card, so there's nothing for this
-     * device to ask for in advance.
+     * The single entry point for whatever an issuer's screen is showing
+     * (SPEC/SPECS.md §6.1/§6.2) - a plain invite or a stamp grant, and
+     * whether the grant is this device's very first stamp for that
+     * program or its hundredth: a stamp grant always carries the Program
+     * Manifest, so there's no separate "join first" case to handle
+     * specially. One card per program per device (a repeat invite or
+     * grant for a program already joined reuses the existing card rather
+     * than creating a duplicate).
+     *
+     * [expectedCardId], if given, rejects a scan for any other business -
+     * used when this is reached from an already-open card's own "Get a
+     * stamp" button, so scanning a stray, unrelated business's QR doesn't
+     * silently create or credit the wrong card.
      */
-    suspend fun acceptStampResponse(cardId: String, stampBytes: ByteArray): StampAcceptOutcome {
-        val card = cardDao.findById(cardId)
-            ?: return StampAcceptOutcome.Rejected("This card could not be found")
+    suspend fun acceptIssuerMessage(scannedBytes: ByteArray, expectedCardId: String? = null): ScanBusinessOutcome {
+        val message = IssuerMessage.parse(scannedBytes)
+            ?: return ScanBusinessOutcome.Rejected("Couldn't read that code - ask the business to try again")
+
+        val manifest = try {
+            ProgramManifest.parseAndVerify(message.manifestBytes)
+        } catch (e: InvalidSignatureException) {
+            // A business's own Program Manifest failing to self-verify is
+            // unusual (unlike a stamp/redemption, there's no "wrong key"
+            // case here - it's self-signed) and worth a real log line.
+            Log.w(TAG, "Scanned program manifest did not verify", e)
+            return ScanBusinessOutcome.Rejected("That business's code doesn't look right")
+        } catch (e: MalformedMessageException) {
+            // Routine: this is also where scanning any unrelated QR code lands.
+            Log.d(TAG, "Scanned bytes did not contain a valid program manifest", e)
+            return ScanBusinessOutcome.Rejected("Couldn't read that code - ask the business to try again")
+        }
+
+        val expectedCard = expectedCardId?.let { cardDao.findById(it) }
+        if (expectedCard != null && manifest.programId != expectedCard.programId) {
+            return ScanBusinessOutcome.Rejected("That code is for a different business")
+        }
+
+        val existing = expectedCard ?: cardDao.findByProgramId(manifest.programId)
+        val card = existing ?: run {
+            val entity = CollectorCardEntity(
+                cardId = UUID.randomUUID().toString(),
+                programId = manifest.programId,
+                issuerPublicKey = manifest.issuerPublicKey.bytes,
+                programName = manifest.name,
+                threshold = manifest.threshold,
+                reward = manifest.reward,
+                createdAt = System.currentTimeMillis(),
+                color = manifest.color,
+                icon = manifest.icon,
+            )
+            cardDao.insert(entity)
+            entity
+        }
+
+        return when (message) {
+            is IssuerMessage.ProgramInvite -> ScanBusinessOutcome.Joined(card.cardId, card.programName)
+            is IssuerMessage.StampGrant -> acceptStampGrant(card, message.stampBytes, justJoined = existing == null)
+        }
+    }
+
+    private suspend fun acceptStampGrant(card: CollectorCardEntity, stampBytes: ByteArray, justJoined: Boolean): ScanBusinessOutcome {
         val issuerPublicKey = VerifyingKey(card.issuerPublicKey)
 
         val stamp = try {
             StampToken.parseAndVerify(stampBytes, issuerPublicKey)
         } catch (e: InvalidSignatureException) {
-            Log.w(TAG, "Stamp did not verify against this card's pinned issuer key (card=$cardId)", e)
-            return StampAcceptOutcome.Rejected("That code isn't a valid stamp from this business")
+            Log.w(TAG, "Stamp did not verify against this card's pinned issuer key (card=${card.cardId})", e)
+            return ScanBusinessOutcome.Rejected("That code isn't a valid stamp from this business")
         } catch (e: MalformedMessageException) {
-            Log.w(TAG, "Stamp was malformed (card=$cardId)", e)
-            return StampAcceptOutcome.Rejected("That code isn't a valid stamp from this business")
+            Log.w(TAG, "Stamp was malformed (card=${card.cardId})", e)
+            return ScanBusinessOutcome.Rejected("That code isn't a valid stamp from this business")
         }
+        // The manifest and the stamp are separately signed, and an issuer
+        // *can* share one keypair across several of its own programs
+        // (SPEC/SPECS.md §4) - so a validly-signed stamp for a *different*
+        // program than the manifest it arrived bundled with is possible
+        // and must still be rejected here, not just trusted because the
+        // signature checked out.
         if (stamp.programId != card.programId) {
-            return StampAcceptOutcome.Rejected("That stamp is for a different business")
+            return ScanBusinessOutcome.Rejected("That stamp is for a different business")
         }
 
-        stampDao.insert(CollectorStampEntity(cardId, stamp.stampId.toHex(), stampBytes))
-        val newCount = stampDao.findAllForCard(cardId).size
-        return StampAcceptOutcome.Accepted(CardProgress.compute(newCount, card.threshold))
+        stampDao.insert(CollectorStampEntity(card.cardId, stamp.stampId.toHex(), stampBytes))
+        val newCount = stampDao.findAllForCard(card.cardId).size
+        return ScanBusinessOutcome.Stamped(card.cardId, CardProgress.compute(newCount, card.threshold), justJoined)
     }
 
     suspend fun buildRedemptionRequest(cardId: String): PendingRedemption? {

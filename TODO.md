@@ -158,6 +158,31 @@ TODO
        redeemable by whoever gets to redemption first, not just its original
        recipient - judged acceptable given this app's own stated scope (a free
        coffee, not a payment credential).
+ * [x] ~~Why does a customer's first stamp need a separate join scan?~~ —
+       resolved by removing the separate scan: the issuer's "give a stamp"
+       QR (`IssuerMessage.StampGrant`, `app/src/main/kotlin/io/fidelitycard/
+       app/qr/IssuerMessages.kt`) now always bundles the Program Manifest
+       alongside the Stamp Token, so `CollectorRepository.acceptIssuerMessage`
+       can create the Card Instance on the spot (via a new
+       `CollectorCardDao.findByProgramId` lookup) if this device doesn't
+       have one yet for that program - a brand new customer's very first
+       stamp is one scan, not two. Superseded `JoinBusinessScreen`/
+       `StampFlowScreen` with one unified `ScanBusinessScreen`
+       (`ScanBusinessViewModel`/`ScanBusinessOutcome`), reachable both from
+       the card list's "+" (no business assumed) and an existing card's
+       "Get a stamp" (rejects a scan for any other business, via an
+       `expectedCardId`). `ProgramInvite` (manifest only, no stamp) stays
+       available for joining with no purchase, e.g. a poster. One Card
+       Instance per program per device from here on (a repeat scan for a
+       program already joined reuses it, never duplicates it).
+       No `:crypto`/wire-version change - `IssuerMessage` is an app-level
+       container, like `CustomerMessage`. Measured, not assumed, before
+       deciding this was worth it: a `StampGrant` is ~255-290 bytes vs
+       ~120 for a bare Stamp Token, which needs a real-but-modest denser
+       QR (roughly version 8 to 13-15 at the error-correction level a
+       center icon needs) - well inside what this app already asks people
+       to scan for a large redemption (up to version ~36, SPEC §6.3), so
+       size was not the deciding factor either way (SPEC §6.1/§6.2/§11).
  * [ ] NFC as a second transport alongside QR, for a one-tap exchange instead of
        show-then-scan. The token format is already transport-agnostic, so this
        is protocol-compatible, just a different Android API (SPEC §11).

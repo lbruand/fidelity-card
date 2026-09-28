@@ -12,9 +12,8 @@ import androidx.navigation.navArgument
 import io.fidelitycard.app.backup.BackupScreen
 import io.fidelitycard.app.collector.CardDetailScreen
 import io.fidelitycard.app.collector.CardListScreen
-import io.fidelitycard.app.collector.JoinBusinessScreen
 import io.fidelitycard.app.collector.RedeemFlowScreen
-import io.fidelitycard.app.collector.StampFlowScreen
+import io.fidelitycard.app.collector.ScanBusinessScreen
 import io.fidelitycard.app.data.AppMode
 import io.fidelitycard.app.issuer.BusinessDetailScreen
 import io.fidelitycard.app.issuer.BusinessListScreen
@@ -27,14 +26,14 @@ private object Routes {
     const val CREATE_BUSINESS = "issuer/businesses/create"
     const val BUSINESS_DETAIL = "issuer/businesses/{programId}"
     const val CARD_LIST = "collector/cards"
-    const val JOIN_BUSINESS = "collector/cards/join"
+    const val SCAN_BUSINESS = "collector/cards/scan"
     const val CARD_DETAIL = "collector/cards/{cardId}"
-    const val STAMP_FLOW = "collector/cards/{cardId}/stamp"
+    const val GET_STAMP = "collector/cards/{cardId}/stamp"
     const val REDEEM_FLOW = "collector/cards/{cardId}/redeem"
 
     fun businessDetail(programId: String) = "issuer/businesses/$programId"
     fun cardDetail(cardId: String) = "collector/cards/$cardId"
-    fun stampFlow(cardId: String) = "collector/cards/$cardId/stamp"
+    fun getStamp(cardId: String) = "collector/cards/$cardId/stamp"
     fun redeemFlow(cardId: String) = "collector/cards/$cardId/redeem"
 }
 
@@ -102,12 +101,13 @@ fun FidelityCardApp() {
         composable(Routes.CARD_LIST) {
             CardListScreen(
                 onOpenCard = { cardId -> navController.navigate(Routes.cardDetail(cardId)) },
-                onJoinBusiness = { navController.navigate(Routes.JOIN_BUSINESS) },
+                onJoinBusiness = { navController.navigate(Routes.SCAN_BUSINESS) },
                 onSwitchMode = { navController.navigate(Routes.HOME) },
             )
         }
-        composable(Routes.JOIN_BUSINESS) {
-            JoinBusinessScreen(
+        composable(Routes.SCAN_BUSINESS) {
+            ScanBusinessScreen(
+                cardId = null,
                 onBack = { navController.popBackStack() },
                 onDone = { cardId ->
                     navController.navigate(Routes.cardDetail(cardId)) {
@@ -124,17 +124,17 @@ fun FidelityCardApp() {
             CardDetailScreen(
                 cardId = cardId,
                 onBack = { navController.popBackStack() },
-                onGetStamp = { navController.navigate(Routes.stampFlow(cardId)) },
+                onGetStamp = { navController.navigate(Routes.getStamp(cardId)) },
                 onRedeem = { navController.navigate(Routes.redeemFlow(cardId)) },
                 onLeft = { navController.popBackStack(Routes.CARD_LIST, inclusive = false) },
             )
         }
         composable(
-            route = Routes.STAMP_FLOW,
+            route = Routes.GET_STAMP,
             arguments = listOf(navArgument("cardId") { type = NavType.StringType }),
         ) { backStackEntry ->
             val cardId = backStackEntry.arguments?.getString("cardId").orEmpty()
-            StampFlowScreen(cardId = cardId, onBack = { navController.popBackStack() }, onDone = { navController.popBackStack() })
+            ScanBusinessScreen(cardId = cardId, onBack = { navController.popBackStack() }, onDone = { navController.popBackStack() })
         }
         composable(
             route = Routes.REDEEM_FLOW,

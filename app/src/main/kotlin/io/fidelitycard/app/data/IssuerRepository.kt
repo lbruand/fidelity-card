@@ -2,6 +2,7 @@ package io.fidelitycard.app.data
 
 import android.util.Log
 import io.fidelitycard.app.qr.CustomerMessage
+import io.fidelitycard.app.qr.IssuerMessage
 import io.fidelitycard.core.RedemptionValidator
 import io.fidelitycard.crypto.InvalidSignatureException
 import io.fidelitycard.crypto.ProgramManifest
@@ -80,15 +81,19 @@ class IssuerRepository(
      * "Give a stamp": mints unconditionally, no scan or customer input
      * needed first (SPEC/SPECS.md §6.2) - a stamp isn't addressed to
      * anyone, so there's nothing to learn from the customer before
-     * minting one. Returns `null` only if [programId] itself doesn't
-     * exist (e.g. stale UI state).
+     * minting one. Always bundles the Program Manifest alongside the
+     * stamp (`IssuerMessage.StampGrant`), so a single scan works whether
+     * the collector already has a card for this program or this is their
+     * very first stamp - no separate "join" scan is ever required.
+     * Returns `null` only if [programId] itself doesn't exist (e.g. stale
+     * UI state).
      */
     suspend fun mintStamp(programId: String): ByteArray? {
         val program = programDao.findById(programId) ?: return null
         val issuer = SigningKeyPair.fromSeed(program.issuerSeed)
         val stamp = StampToken.mint(issuer, program.programId)
         mintedStampDao.insert(IssuerMintedStampEntity(program.programId, stamp.stampId.toHex(), mintedAt = System.currentTimeMillis()))
-        return stamp.toWireBytes()
+        return IssuerMessage.StampGrant(program.programManifestBytes, stamp.toWireBytes()).toWireBytes()
     }
 
     /** The single entry point behind "Scan a customer": a redemption request, small or large. */

@@ -6,7 +6,7 @@ import io.fidelitycard.app.data.CardSummary
 import io.fidelitycard.app.data.CollectorRepository
 import io.fidelitycard.app.data.PendingRedemption
 import io.fidelitycard.app.data.RedemptionAcceptOutcome
-import io.fidelitycard.app.data.StampAcceptOutcome
+import io.fidelitycard.app.data.ScanBusinessOutcome
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -30,33 +30,49 @@ class CardDetailViewModel(private val repository: CollectorRepository, private v
     }
 }
 
-/** Joining is a single scan - no round trip (SPEC/SPECS.md §6.1): the collector never sends the issuer anything. */
-sealed interface JoinState {
-    data object ScanProgram : JoinState
-    data class Done(val cardId: String, val programName: String) : JoinState
-    data class Failed(val message: String) : JoinState
+/**
+ * Scanning a business's screen is always a single scan - no round trip
+ * (SPEC/SPECS.md §6.1/§6.2): the collector never sends the issuer
+ * anything, whether this turns out to be a plain join or a stamp grant
+ * (which creates the card too, if this is the first time - a brand new
+ * customer's very first stamp needs no separate "join" scan beforehand).
+ */
+sealed interface ScanBusinessState {
+    data object Scan : ScanBusinessState
+    data class Done(val cardId: String, val message: String) : ScanBusinessState
+    data class Failed(val message: String) : ScanBusinessState
 }
 
-class JoinFlowViewModel(private val repository: CollectorRepository) : ViewModel() {
+/**
+ * [cardId], if given, scopes this scan to that card's own business - used
+ * when reached from an already-open card's "Get a stamp" button, so a
+ * stray scan of a different business is rejected instead of silently
+ * creating or crediting a different card. `null` for the top-level "scan
+ * a business" action (reachable with no card open yet).
+ */
+class ScanBusinessViewModel(private val repository: CollectorRepository, private val cardId: String?) : ViewModel() {
 
-    private val _state = MutableStateFlow<JoinState>(JoinState.ScanProgram)
-    val state: StateFlow<JoinState> = _state
+    private val _state = MutableStateFlow<ScanBusinessState>(ScanBusinessState.Scan)
+    val state: StateFlow<ScanBusinessState> = _state
 
     fun onScanned(bytes: ByteArray?) {
         if (bytes == null) return
-        val program = repository.parseProgramQr(bytes)
-        if (program == null) {
-            _state.value = JoinState.Failed("That doesn't look like a business code")
-            return
-        }
         viewModelScope.launch {
-            val summary = repository.joinProgram(program)
-            _state.value = JoinState.Done(summary.cardId, summary.programName)
+            _state.value = when (val outcome = repository.acceptIssuerMessage(bytes, cardId)) {
+                is ScanBusinessOutcome.Joined ->
+                    ScanBusinessState.Done(outcome.cardId, "You joined ${outcome.programName}!")
+                is ScanBusinessOutcome.Stamped ->
+                    ScanBusinessState.Done(
+                        outcome.cardId,
+                        if (outcome.justJoined) "Welcome! Your first stamp is in." else "Stamp added!",
+                    )
+                is ScanBusinessOutcome.Rejected -> ScanBusinessState.Failed(outcome.reason)
+            }
         }
     }
 
     fun retry() {
-        _state.value = JoinState.ScanProgram
+        _state.value = ScanBusinessState.Scan
     }
 }
 
@@ -67,37 +83,6 @@ sealed interface ExchangeState {
     data object Scanning : ExchangeState
     data class Done(val message: String) : ExchangeState
     data class Failed(val message: String) : ExchangeState
-}
-
-/**
- * Getting a stamp is a single one-way scan (SPEC/SPECS.md §6.2): the
- * issuer mints and shows a Stamp Token unprompted, this device just scans
- * whatever it's shown - there is no request to build or show first.
- */
-sealed interface GetStampState {
-    data object ReadyToScan : GetStampState
-    data class Done(val message: String) : GetStampState
-    data class Failed(val message: String) : GetStampState
-}
-
-class StampFlowViewModel(private val repository: CollectorRepository, private val cardId: String) : ViewModel() {
-
-    private val _state = MutableStateFlow<GetStampState>(GetStampState.ReadyToScan)
-    val state: StateFlow<GetStampState> = _state
-
-    fun onScanned(bytes: ByteArray?) {
-        if (bytes == null) return
-        viewModelScope.launch {
-            _state.value = when (val outcome = repository.acceptStampResponse(cardId, bytes)) {
-                is StampAcceptOutcome.Accepted -> GetStampState.Done("Stamp added!")
-                is StampAcceptOutcome.Rejected -> GetStampState.Failed(outcome.reason)
-            }
-        }
-    }
-
-    fun retry() {
-        _state.value = GetStampState.ReadyToScan
-    }
 }
 
 class RedeemFlowViewModel(private val repository: CollectorRepository, private val cardId: String) : ViewModel() {

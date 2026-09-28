@@ -84,7 +84,7 @@ fun CardListScreen(onOpenCard: (String) -> Unit, onJoinBusiness: () -> Unit, onS
         },
         floatingActionButton = {
             FloatingActionButton(onClick = onJoinBusiness) {
-                Icon(Icons.Filled.Add, contentDescription = "Join a business")
+                Icon(Icons.Filled.Add, contentDescription = "Scan a business")
             }
         },
     ) { padding: PaddingValues ->
@@ -95,7 +95,7 @@ fun CardListScreen(onOpenCard: (String) -> Unit, onJoinBusiness: () -> Unit, onS
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 Text("No cards yet.", style = MaterialTheme.typography.titleMedium)
-                Text("Tap + to join a business.")
+                Text("Tap + to scan a business - joining and getting your first stamp are the same scan.")
             }
         } else {
             LazyColumn(modifier = Modifier.padding(padding).fillMaxSize()) {
@@ -123,16 +123,24 @@ fun CardListScreen(onOpenCard: (String) -> Unit, onJoinBusiness: () -> Unit, onS
     }
 }
 
+/**
+ * One scanner for both "scan a new business" (no [cardId] - joins, and
+ * credits a stamp too if the business's screen was showing one) and "get
+ * a stamp" from an already-open card (has [cardId] - scoped to that one
+ * business). See [ScanBusinessViewModel] and SPEC/SPECS.md §6.1/§6.2.
+ */
 @Composable
-fun JoinBusinessScreen(onBack: () -> Unit, onDone: (String) -> Unit) {
+fun ScanBusinessScreen(cardId: String?, onBack: () -> Unit, onDone: (String) -> Unit) {
     val repo = collectorRepository()
-    val viewModel: JoinFlowViewModel = viewModel(factory = viewModelFactory { initializer { JoinFlowViewModel(repo) } })
+    val viewModel: ScanBusinessViewModel = viewModel(
+        factory = viewModelFactory { initializer { ScanBusinessViewModel(repo, cardId) } },
+    )
     val state by viewModel.state.collectAsState()
     val scanner = rememberQrScanLauncher { bytes -> viewModel.onScanned(bytes) }
 
     Scaffold(
         topBar = {
-            TopAppBar(title = { Text("Join a business") }, navigationIcon = { BackButton(onBack) })
+            TopAppBar(title = { Text(if (cardId == null) "Scan a business" else "Get a stamp") }, navigationIcon = { BackButton(onBack) })
         },
     ) { padding: PaddingValues ->
         Column(
@@ -141,21 +149,28 @@ fun JoinBusinessScreen(onBack: () -> Unit, onDone: (String) -> Unit) {
             verticalArrangement = Arrangement.Center,
         ) {
             when (val s = state) {
-                JoinState.ScanProgram -> {
-                    Text("Scan the business's QR code to join", style = MaterialTheme.typography.titleMedium)
+                ScanBusinessState.Scan -> {
+                    Text(
+                        if (cardId == null) {
+                            "Scan a business's QR code to join, or to get your next stamp"
+                        } else {
+                            "Scan the business's screen"
+                        },
+                        style = MaterialTheme.typography.titleMedium,
+                    )
                     Spacer(modifier = Modifier.height(24.dp))
                     Button(onClick = { scanner.launch() }, modifier = Modifier.fillMaxWidth().height(72.dp)) {
-                        Text("Scan business")
+                        Text("Scan")
                     }
                 }
-                is JoinState.Done -> {
-                    Text("You joined ${s.programName}!", style = MaterialTheme.typography.headlineSmall)
+                is ScanBusinessState.Done -> {
+                    Text(s.message, style = MaterialTheme.typography.headlineSmall)
                     Spacer(modifier = Modifier.height(24.dp))
                     Button(onClick = { onDone(s.cardId) }, modifier = Modifier.fillMaxWidth().height(56.dp)) {
-                        Text("View my card")
+                        Text(if (cardId == null) "View my card" else "Done")
                     }
                 }
-                is JoinState.Failed -> {
+                is ScanBusinessState.Failed -> {
                     Text(s.message, style = MaterialTheme.typography.titleMedium)
                     Spacer(modifier = Modifier.height(24.dp))
                     Button(onClick = { viewModel.retry() }, modifier = Modifier.fillMaxWidth().height(56.dp)) {
@@ -232,50 +247,6 @@ fun CardDetailScreen(
                 }
             },
         )
-    }
-}
-
-@Composable
-fun StampFlowScreen(cardId: String, onBack: () -> Unit, onDone: () -> Unit) {
-    val repo = collectorRepository()
-    val viewModel: StampFlowViewModel = viewModel(
-        factory = viewModelFactory { initializer { StampFlowViewModel(repo, cardId) } },
-    )
-    val currentState by viewModel.state.collectAsState()
-    val scanner = rememberQrScanLauncher(viewModel::onScanned)
-
-    Scaffold(
-        topBar = { TopAppBar(title = { Text("Get a stamp") }, navigationIcon = { BackButton(onBack) }) },
-    ) { padding: PaddingValues ->
-        Column(
-            modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
-        ) {
-            when (val s = currentState) {
-                GetStampState.ReadyToScan -> {
-                    Text("Scan the business's screen", style = MaterialTheme.typography.titleMedium)
-                    Spacer(modifier = Modifier.height(24.dp))
-                    Button(onClick = { scanner.launch() }, modifier = Modifier.fillMaxWidth().height(72.dp)) {
-                        Text("Scan")
-                    }
-                }
-                is GetStampState.Done -> {
-                    Text(s.message, style = MaterialTheme.typography.headlineSmall)
-                    Spacer(modifier = Modifier.height(24.dp))
-                    Button(onClick = onDone, modifier = Modifier.fillMaxWidth().height(56.dp)) {
-                        Text("Done")
-                    }
-                }
-                is GetStampState.Failed -> {
-                    Text(s.message, style = MaterialTheme.typography.titleMedium)
-                    Spacer(modifier = Modifier.height(24.dp))
-                    Button(onClick = { viewModel.retry() }, modifier = Modifier.fillMaxWidth().height(56.dp)) {
-                        Text("Try again")
-                    }
-                }
-            }
-        }
     }
 }
 
