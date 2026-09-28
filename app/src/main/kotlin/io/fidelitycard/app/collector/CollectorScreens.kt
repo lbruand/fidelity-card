@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -42,6 +44,7 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import io.fidelitycard.app.FidelityApplication
 import io.fidelitycard.app.data.CardSummary
+import io.fidelitycard.app.ui.CardStyleBadge
 import io.fidelitycard.app.ui.QrDisplay
 import io.fidelitycard.app.ui.StampProgressDots
 import io.fidelitycard.app.ui.rememberQrScanLauncher
@@ -97,10 +100,14 @@ fun CardListScreen(onOpenCard: (String) -> Unit, onJoinBusiness: () -> Unit, onS
                         modifier = Modifier.fillMaxWidth().padding(12.dp),
                         onClick = { onOpenCard(card.cardId) },
                     ) {
-                        Column(modifier = Modifier.padding(16.dp)) {
-                            Text(card.programName, style = MaterialTheme.typography.titleLarge)
-                            Spacer(modifier = Modifier.height(8.dp))
-                            StampProgressDots(card.progress)
+                        Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                            CardStyleBadge(card.color, card.icon)
+                            Spacer(modifier = Modifier.width(16.dp))
+                            Column {
+                                Text(card.programName, style = MaterialTheme.typography.titleLarge)
+                                Spacer(modifier = Modifier.height(8.dp))
+                                StampProgressDots(card.progress)
+                            }
                         }
                     }
                 }

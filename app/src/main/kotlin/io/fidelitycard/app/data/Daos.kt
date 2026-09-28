@@ -96,6 +96,8 @@ data class CardWithStampCount(
     val threshold: Int,
     val reward: String,
     val stampCount: Int,
+    val color: Int,
+    val icon: String,
 )
 
 private const val CARD_WITH_STAMP_COUNT_QUERY = """
@@ -104,7 +106,9 @@ private const val CARD_WITH_STAMP_COUNT_QUERY = """
            collector_cards.programName AS programName,
            collector_cards.threshold AS threshold,
            collector_cards.reward AS reward,
-           COUNT(collector_stamps.stampIdHex) AS stampCount
+           COUNT(collector_stamps.stampIdHex) AS stampCount,
+           collector_cards.color AS color,
+           collector_cards.icon AS icon
     FROM collector_cards
     LEFT JOIN collector_stamps ON collector_stamps.cardId = collector_cards.cardId
 """

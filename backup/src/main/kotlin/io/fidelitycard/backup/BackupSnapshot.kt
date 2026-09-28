@@ -3,7 +3,7 @@ package io.fidelitycard.backup
 import io.fidelitycard.crypto.wire.WireReader
 import io.fidelitycard.crypto.wire.WireWriter
 
-private const val FORMAT_VERSION = 2
+private const val FORMAT_VERSION = 3
 private const val KEY_LENGTH_BYTES = 32
 
 /**
@@ -20,10 +20,12 @@ private const val KEY_LENGTH_BYTES = 32
  * a full replace-on-restore backup, not a merge, so there's no need for
  * the format to diverge from storage; see `io.fidelitycard.app.data`.
  *
- * `FORMAT_VERSION` bumped 1 -> 2 to add [issuerMintedStamps]; a version-1
- * backup file is rejected outright rather than read as "empty ledger" -
- * simpler, and this early pre-release there's no real backup file anyone
- * needs read back.
+ * `FORMAT_VERSION` bumped 1 -> 2 to add [issuerMintedStamps], then 2 -> 3
+ * to add `color`/`icon` to [IssuerProgramRow]/[CollectorCardRow] (card
+ * personalization, TODO.md "Product / UX"). An older-version backup file
+ * is rejected outright rather than read with defaulted fields - simpler,
+ * and this early pre-release there's no real backup file anyone needs
+ * read back.
  */
 data class BackupSnapshot(
     val issuerPrograms: List<IssuerProgramRow>,
@@ -84,6 +86,8 @@ class IssuerProgramRow(
     val issuerSeed: ByteArray,
     val programManifestBytes: ByteArray,
     val createdAt: Long,
+    val color: Int,
+    val icon: String,
 ) {
     internal fun writeTo(writer: WireWriter) {
         writer.writeString(programId)
@@ -93,6 +97,8 @@ class IssuerProgramRow(
         writer.writeFixedBytes(issuerSeed, KEY_LENGTH_BYTES)
         writer.writeVarBytes(programManifestBytes)
         writer.writeInt64(createdAt)
+        writer.writeInt32(color)
+        writer.writeString(icon)
     }
 
     override fun equals(other: Any?): Boolean =
@@ -103,10 +109,15 @@ class IssuerProgramRow(
             reward == other.reward &&
             issuerSeed.contentEquals(other.issuerSeed) &&
             programManifestBytes.contentEquals(other.programManifestBytes) &&
-            createdAt == other.createdAt
+            createdAt == other.createdAt &&
+            color == other.color &&
+            icon == other.icon
 
     override fun hashCode(): Int =
-        listOf(programId, name, threshold, reward, issuerSeed.contentHashCode(), programManifestBytes.contentHashCode(), createdAt).hashCode()
+        listOf(
+            programId, name, threshold, reward, issuerSeed.contentHashCode(),
+            programManifestBytes.contentHashCode(), createdAt, color, icon,
+        ).hashCode()
 
     companion object {
         internal fun readFrom(reader: WireReader): IssuerProgramRow = IssuerProgramRow(
@@ -117,6 +128,8 @@ class IssuerProgramRow(
             issuerSeed = reader.readFixedBytes(KEY_LENGTH_BYTES),
             programManifestBytes = reader.readVarBytes(),
             createdAt = reader.readInt64(),
+            color = reader.readInt32(),
+            icon = reader.readString(),
         )
     }
 }
@@ -192,6 +205,8 @@ class CollectorCardRow(
     val threshold: Int,
     val reward: String,
     val createdAt: Long,
+    val color: Int,
+    val icon: String,
 ) {
     internal fun writeTo(writer: WireWriter) {
         writer.writeString(cardId)
@@ -201,6 +216,8 @@ class CollectorCardRow(
         writer.writeInt32(threshold)
         writer.writeString(reward)
         writer.writeInt64(createdAt)
+        writer.writeInt32(color)
+        writer.writeString(icon)
     }
 
     override fun equals(other: Any?): Boolean =
@@ -211,10 +228,12 @@ class CollectorCardRow(
             programName == other.programName &&
             threshold == other.threshold &&
             reward == other.reward &&
-            createdAt == other.createdAt
+            createdAt == other.createdAt &&
+            color == other.color &&
+            icon == other.icon
 
     override fun hashCode(): Int =
-        listOf(cardId, programId, issuerPublicKey.contentHashCode(), programName, threshold, reward, createdAt).hashCode()
+        listOf(cardId, programId, issuerPublicKey.contentHashCode(), programName, threshold, reward, createdAt, color, icon).hashCode()
 
     companion object {
         internal fun readFrom(reader: WireReader): CollectorCardRow = CollectorCardRow(
@@ -225,6 +244,8 @@ class CollectorCardRow(
             threshold = reader.readInt32(),
             reward = reader.readString(),
             createdAt = reader.readInt64(),
+            color = reader.readInt32(),
+            icon = reader.readString(),
         )
     }
 }

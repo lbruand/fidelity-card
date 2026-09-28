@@ -16,6 +16,8 @@ class ProgramManifestTest {
             name = "Joe's Coffee",
             threshold = 10,
             reward = "Free coffee",
+            color = 0xFF00897B.toInt(),
+            icon = "☕",
         )
 
         val parsed = ProgramManifest.parseAndVerify(manifest.toWireBytes())
@@ -25,16 +27,18 @@ class ProgramManifestTest {
         assertEquals("Joe's Coffee", parsed.name)
         assertEquals(10, parsed.threshold)
         assertEquals("Free coffee", parsed.reward)
+        assertEquals(0xFF00897B.toInt(), parsed.color)
+        assertEquals("☕", parsed.icon)
     }
 
     @Test
     fun `rejects the manifest if a signed payload byte is changed after signing`() {
-        val bytes = ProgramManifest.issue(issuer, "Joe's Coffee", threshold = 10, reward = "Free coffee")
+        val bytes = ProgramManifest.issue(issuer, "Joe's Coffee", threshold = 10, reward = "Free coffee", color = 0xFF00897B.toInt(), icon = "☕")
             .toWireBytes()
 
         // The signature is always the trailing SIGNATURE_LENGTH_BYTES bytes,
         // so the byte just before it is always part of the signed payload
-        // (here, the last byte of "reward") regardless of field layout.
+        // (here, the last byte of "icon") regardless of field layout.
         val tampered = bytes.copyOf()
         val lastPayloadByteIndex = tampered.size - 1 - SIGNATURE_LENGTH_BYTES
         tampered[lastPayloadByteIndex] = (tampered[lastPayloadByteIndex].toInt() xor 0x01).toByte()
@@ -46,7 +50,7 @@ class ProgramManifestTest {
 
     @Test
     fun `rejects the manifest if the signature itself is corrupted`() {
-        val bytes = ProgramManifest.issue(issuer, "Joe's Coffee", threshold = 10, reward = "Free coffee")
+        val bytes = ProgramManifest.issue(issuer, "Joe's Coffee", threshold = 10, reward = "Free coffee", color = 0xFF00897B.toInt(), icon = "☕")
             .toWireBytes()
 
         val tampered = bytes.copyOf()
@@ -60,7 +64,7 @@ class ProgramManifestTest {
     @Test
     fun `threshold must be positive`() {
         assertThrows(IllegalArgumentException::class.java) {
-            ProgramManifest.issue(issuer, "Joe's Coffee", threshold = 0, reward = "Free coffee")
+            ProgramManifest.issue(issuer, "Joe's Coffee", threshold = 0, reward = "Free coffee", color = 0xFF00897B.toInt(), icon = "☕")
         }
     }
 }

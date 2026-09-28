@@ -17,9 +17,9 @@ class BusinessListViewModel(repository: IssuerRepository) : ViewModel() {
 }
 
 class CreateBusinessViewModel(private val repository: IssuerRepository) : ViewModel() {
-    fun createProgram(name: String, threshold: Int, reward: String, onCreated: (String) -> Unit) {
+    fun createProgram(name: String, threshold: Int, reward: String, color: Int, icon: String, onCreated: (String) -> Unit) {
         viewModelScope.launch {
-            val program = repository.createProgram(name, threshold, reward)
+            val program = repository.createProgram(name, threshold, reward, color, icon)
             onCreated(program.programId)
         }
     }

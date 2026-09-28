@@ -9,6 +9,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
@@ -42,6 +45,10 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import io.fidelitycard.app.FidelityApplication
 import io.fidelitycard.app.data.ProgramSummary
+import io.fidelitycard.app.ui.CardStyle
+import io.fidelitycard.app.ui.CardStyleBadge
+import io.fidelitycard.app.ui.ColorPickerRow
+import io.fidelitycard.app.ui.IconPickerRow
 import io.fidelitycard.app.ui.QrDisplay
 import io.fidelitycard.app.ui.rememberQrScanLauncher
 
@@ -90,9 +97,13 @@ fun BusinessListScreen(onOpenBusiness: (String) -> Unit, onCreateBusiness: () ->
                         modifier = Modifier.fillMaxWidth().padding(12.dp),
                         onClick = { onOpenBusiness(program.programId) },
                     ) {
-                        Column(modifier = Modifier.padding(16.dp)) {
-                            Text(program.name, style = MaterialTheme.typography.titleLarge)
-                            Text("${program.threshold} stamps -> ${program.reward}")
+                        Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                            CardStyleBadge(program.color, program.icon)
+                            Spacer(modifier = Modifier.width(16.dp))
+                            Column {
+                                Text(program.name, style = MaterialTheme.typography.titleLarge)
+                                Text("${program.threshold} stamps -> ${program.reward}")
+                            }
                         }
                     }
                 }
@@ -111,6 +122,8 @@ fun CreateBusinessScreen(onBack: () -> Unit, onCreated: (String) -> Unit) {
     var name by remember { mutableStateOf("") }
     var thresholdText by remember { mutableStateOf("10") }
     var reward by remember { mutableStateOf("") }
+    var color by remember { mutableStateOf(CardStyle.defaultColor) }
+    var icon by remember { mutableStateOf(CardStyle.defaultIcon) }
 
     Scaffold(
         topBar = {
@@ -154,11 +167,17 @@ fun CreateBusinessScreen(onBack: () -> Unit, onCreated: (String) -> Unit) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
+            Text("Color", style = MaterialTheme.typography.labelLarge)
+            ColorPickerRow(selected = color, onSelect = { color = it })
+
+            Text("Icon", style = MaterialTheme.typography.labelLarge)
+            IconPickerRow(selected = icon, onSelect = { icon = it })
+
             val threshold = thresholdText.toIntOrNull() ?: 0
             val canCreate = name.isNotBlank() && reward.isNotBlank() && threshold > 0
 
             Button(
-                onClick = { viewModel.createProgram(name.trim(), threshold, reward.trim(), onCreated) },
+                onClick = { viewModel.createProgram(name.trim(), threshold, reward.trim(), color, icon, onCreated) },
                 enabled = canCreate,
                 modifier = Modifier.fillMaxWidth().height(56.dp),
             ) {

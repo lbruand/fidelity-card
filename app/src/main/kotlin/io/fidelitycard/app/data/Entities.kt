@@ -7,6 +7,10 @@ import androidx.room.PrimaryKey
  * A loyalty program this device issues. [issuerSeed] is the raw 32-byte
  * Ed25519 seed, stored as plain bytes rather than Android Keystore-backed -
  * a deliberate scope decision, not an oversight (SPEC/SPECS.md §2/§7).
+ * [color]/[icon] are the card's visual personality, also signed inside
+ * [programManifestBytes] (`io.fidelitycard.crypto.ProgramManifest`) -
+ * duplicated here as plain columns purely so the issuer's own list/detail
+ * screens can render them without re-parsing the manifest every time.
  */
 @Entity(tableName = "issuer_programs")
 data class IssuerProgramEntity(
@@ -17,6 +21,8 @@ data class IssuerProgramEntity(
     val issuerSeed: ByteArray,
     val programManifestBytes: ByteArray,
     val createdAt: Long,
+    val color: Int,
+    val icon: String,
 )
 
 /**
@@ -73,7 +79,9 @@ data class IssuerMintedStampEntity(
  * generated opaque identifier - the collector holds no cryptographic
  * identity of its own (SPEC/SPECS.md §4/§6.1); everything that actually
  * needs protecting is covered by the issuer's own signatures on each
- * Stamp Token and Redemption Certificate.
+ * Stamp Token and Redemption Certificate. [color]/[icon] are copied from
+ * the Program Manifest at join time (SPEC/SPECS.md §5.1) - the card's
+ * visual personality, chosen by the issuer.
  */
 @Entity(tableName = "collector_cards")
 data class CollectorCardEntity(
@@ -84,6 +92,8 @@ data class CollectorCardEntity(
     val threshold: Int,
     val reward: String,
     val createdAt: Long,
+    val color: Int,
+    val icon: String,
 )
 
 /**

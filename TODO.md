@@ -18,7 +18,19 @@ TODO
        became universal), includes a monochrome layer for Android 13+
        themed icons. Also shown in-app on `HomeScreen` for brand
        consistency, not just as the launcher icon.
- * [ ] We should be able to give a little more personnality to the card. ( Like a stamp style, colors, a logo etc...)
+ * [x] We should be able to give a little more personnality to the card (like a
+       stamp style, colors, a logo etc...): done, as color + icon/emoji. An
+       issuer picks both from a small fixed palette/set
+       (`io.fidelitycard.app.ui.CardStyle`) when creating a business; both
+       travel inside the signed `ProgramManifest` (wire format bumped
+       3 -> 4, CRYPTO_WIRE_FORMAT.md §5.1) so the collector's card view
+       shows the same personalization, not just the issuer's own list.
+       Rendered as a small badge (`CardStyleBadge`) on both list screens.
+       DB version bumped 5 -> 6 (`MIGRATION_5_6`), backup format bumped
+       2 -> 3 (`IssuerProgramRow`/`CollectorCardRow`). Free-form colors/a
+       custom image upload were considered and rejected as more than this
+       app needs - a fixed palette keeps the picker a two-tap choice and
+       every rendering a single simple badge shape.
 
 ## From the spec (SPEC/SPECS.md)
 

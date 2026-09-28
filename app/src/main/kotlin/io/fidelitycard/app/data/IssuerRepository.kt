@@ -20,6 +20,8 @@ data class ProgramSummary(
     val threshold: Int,
     val reward: String,
     val programManifestBytes: ByteArray,
+    val color: Int,
+    val icon: String,
 )
 
 /** What happened after the issuer scanned whatever a customer's phone was showing. */
@@ -57,9 +59,9 @@ class IssuerRepository(
     suspend fun findProgram(programId: String): ProgramSummary? =
         programDao.findById(programId)?.toSummary()
 
-    suspend fun createProgram(name: String, threshold: Int, reward: String): ProgramSummary {
+    suspend fun createProgram(name: String, threshold: Int, reward: String, color: Int, icon: String): ProgramSummary {
         val issuer = SigningKeyPair.generate()
-        val manifest = ProgramManifest.issue(issuer, name, threshold, reward)
+        val manifest = ProgramManifest.issue(issuer, name, threshold, reward, color, icon)
         val entity = IssuerProgramEntity(
             programId = manifest.programId,
             name = name,
@@ -68,6 +70,8 @@ class IssuerRepository(
             issuerSeed = issuer.seed,
             programManifestBytes = manifest.toWireBytes(),
             createdAt = System.currentTimeMillis(),
+            color = color,
+            icon = icon,
         )
         programDao.insert(entity)
         return entity.toSummary()
@@ -203,5 +207,5 @@ class IssuerRepository(
     }
 
     private fun IssuerProgramEntity.toSummary() =
-        ProgramSummary(programId, name, threshold, reward, programManifestBytes)
+        ProgramSummary(programId, name, threshold, reward, programManifestBytes, color, icon)
 }

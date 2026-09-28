@@ -7,8 +7,13 @@ package io.fidelitycard.crypto.wire
  * a stamp/redemption request's own signature checks didn't already cover,
  * so it wasn't buying real security; see SPEC/SPECS.md §6.1. This also
  * frees up its type tag, reused by renumbering rather than left as a gap.
+ * Bumped to 4 when Program Manifest gained `color`/`icon` (TODO.md
+ * "Product / UX" - card personalization); Stamp Token and Redemption
+ * Certificate didn't change shape, but the shared version byte still
+ * moves for all of them, since a reader can't otherwise tell which
+ * Program Manifest layout it's looking at.
  */
-const val WIRE_VERSION = 3
+const val WIRE_VERSION = 4
 
 /** Ed25519 signatures are always exactly 64 bytes. */
 const val SIGNATURE_LENGTH_BYTES = 64

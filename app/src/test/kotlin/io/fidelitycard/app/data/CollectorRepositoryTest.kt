@@ -27,6 +27,8 @@ class CollectorRepositoryTest {
                 threshold = threshold,
                 reward = "Free coffee",
                 createdAt = 0L,
+                color = 0xFF00897B.toInt(),
+                icon = "☕",
             ),
         )
     }

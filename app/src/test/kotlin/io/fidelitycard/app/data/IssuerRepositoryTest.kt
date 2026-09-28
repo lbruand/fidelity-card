@@ -30,6 +30,8 @@ class IssuerRepositoryTest {
                 issuerSeed = issuer.seed,
                 programManifestBytes = ByteArray(0),
                 createdAt = 0L,
+                color = 0xFF00897B.toInt(),
+                icon = "☕",
             ),
         )
     }

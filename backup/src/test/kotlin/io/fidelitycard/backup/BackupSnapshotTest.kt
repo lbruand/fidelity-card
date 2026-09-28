@@ -17,6 +17,8 @@ class BackupSnapshotTest {
                 issuerSeed = ByteArray(32) { it.toByte() },
                 programManifestBytes = ByteArray(157) { it.toByte() },
                 createdAt = 1_700_000_000_000L,
+                color = 0xFF00897B.toInt(),
+                icon = "☕",
             ),
         ),
         issuedCards = listOf(
@@ -39,6 +41,8 @@ class BackupSnapshotTest {
                 threshold = 5,
                 reward = "Free tea",
                 createdAt = 1_700_000_003_000L,
+                color = 0xFFD84315.toInt(),
+                icon = "🍵",
             ),
         ),
         collectorStamps = listOf(

@@ -14,6 +14,12 @@ import io.fidelitycard.crypto.wire.readAndVerifyHeader
  * issuer offered (name, threshold, reward), and pins [issuerPublicKey] as
  * the key every later Card Certificate, Stamp Token and Redemption
  * Certificate for this program must be signed by.
+ *
+ * [color]/[icon] are the card's visual personality (TODO.md "Product / UX")
+ * - opaque to `:crypto` (an ARGB int, an emoji/short string) so a UI layer
+ * can define whatever fixed palette/icon set it wants without this module
+ * knowing or caring; they still travel inside the signed payload so a
+ * collector's rendering of them can't be tampered with in transit.
  */
 class ProgramManifest private constructor(
     val programId: String,
@@ -21,12 +27,14 @@ class ProgramManifest private constructor(
     val name: String,
     val threshold: Int,
     val reward: String,
+    val color: Int,
+    val icon: String,
     private val signature: ByteArray,
 ) {
 
     fun toWireBytes(): ByteArray =
         WireWriter()
-            .apply { writeSignedPayload(this, programId, issuerPublicKey, name, threshold, reward) }
+            .apply { writeSignedPayload(this, programId, issuerPublicKey, name, threshold, reward, color, icon) }
             .writeFixedBytes(signature, SIGNATURE_LENGTH_BYTES)
             .toByteArray()
 
@@ -37,6 +45,8 @@ class ProgramManifest private constructor(
             name: String,
             threshold: Int,
             reward: String,
+            color: Int,
+            icon: String,
             programIdNonce: ByteArray? = null,
         ): ProgramManifest {
             require(threshold > 0) { "threshold must be positive, was $threshold" }
@@ -47,27 +57,47 @@ class ProgramManifest private constructor(
                 ProgramId.derive(issuer.publicKey, name, programIdNonce)
             }
             val payload = WireWriter()
-                .apply { writeSignedPayload(this, programId, issuer.publicKey, name, threshold, reward) }
+                .apply { writeSignedPayload(this, programId, issuer.publicKey, name, threshold, reward, color, icon) }
                 .toByteArray()
             val signature = issuer.sign(payload)
 
-            return ProgramManifest(programId, issuer.publicKey, name, threshold, reward, signature)
+            return ProgramManifest(programId, issuer.publicKey, name, threshold, reward, color, icon, signature)
         }
 
         fun parseAndVerify(bytes: ByteArray): ProgramManifest {
             val reader = WireReader(bytes)
-            val (programId, issuerPublicKey, name, threshold, reward) = readSignedFields(reader)
+            val fields = readSignedFields(reader)
             val signature = reader.readFixedBytes(SIGNATURE_LENGTH_BYTES)
             reader.requireFullyConsumed()
 
             val payload = WireWriter()
-                .apply { writeSignedPayload(this, programId, issuerPublicKey, name, threshold, reward) }
+                .apply {
+                    writeSignedPayload(
+                        this,
+                        fields.programId,
+                        fields.issuerPublicKey,
+                        fields.name,
+                        fields.threshold,
+                        fields.reward,
+                        fields.color,
+                        fields.icon,
+                    )
+                }
                 .toByteArray()
-            if (!issuerPublicKey.verify(payload, signature)) {
+            if (!fields.issuerPublicKey.verify(payload, signature)) {
                 throw InvalidSignatureException("ProgramManifest signature does not verify against its own issuer key")
             }
 
-            return ProgramManifest(programId, issuerPublicKey, name, threshold, reward, signature)
+            return ProgramManifest(
+                fields.programId,
+                fields.issuerPublicKey,
+                fields.name,
+                fields.threshold,
+                fields.reward,
+                fields.color,
+                fields.icon,
+                signature,
+            )
         }
 
         private fun writeSignedPayload(
@@ -77,6 +107,8 @@ class ProgramManifest private constructor(
             name: String,
             threshold: Int,
             reward: String,
+            color: Int,
+            icon: String,
         ) {
             writer.writeByte(WIRE_VERSION)
             writer.writeByte(MessageTag.PROGRAM)
@@ -85,6 +117,8 @@ class ProgramManifest private constructor(
             writer.writeString(name)
             writer.writeInt32(threshold)
             writer.writeString(reward)
+            writer.writeInt32(color)
+            writer.writeString(icon)
         }
 
         private data class SignedFields(
@@ -93,6 +127,8 @@ class ProgramManifest private constructor(
             val name: String,
             val threshold: Int,
             val reward: String,
+            val color: Int,
+            val icon: String,
         )
 
         private fun readSignedFields(reader: WireReader): SignedFields {
@@ -103,7 +139,9 @@ class ProgramManifest private constructor(
             val name = reader.readString()
             val threshold = reader.readInt32()
             val reward = reader.readString()
-            return SignedFields(programId, issuerPublicKey, name, threshold, reward)
+            val color = reader.readInt32()
+            val icon = reader.readString()
+            return SignedFields(programId, issuerPublicKey, name, threshold, reward, color, icon)
         }
     }
 }

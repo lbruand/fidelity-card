@@ -34,7 +34,7 @@ from the QR protocol, with its own version byte, not a `:crypto` message
 type.
 
 ```
-version: byte = 2
+version: byte = 3
 
 issuer_programs: int32 count, then that many:
   program_id:            string
@@ -44,6 +44,8 @@ issuer_programs: int32 count, then that many:
   issuer_seed:           fixedBytes(32)   -- the program's private key
   program_manifest_bytes: varBytes
   created_at:            int64
+  color:                 int32            -- ARGB, card personalization
+  icon:                  string           -- e.g. one emoji
 
 issued_cards: int32 count, then that many:
   program_id: string
@@ -64,6 +66,8 @@ collector_cards: int32 count, then that many:
   threshold:          int32
   reward:             string
   created_at:         int64
+  color:              int32   -- ARGB, card personalization
+  icon:               string  -- e.g. one emoji
 
 collector_stamps: int32 count, then that many:
   card_id:            string
@@ -89,8 +93,10 @@ Losing it (e.g. restoring an older backup taken before it existed) doesn't
 corrupt anything, but it does mean stamps minted since that backup can no
 longer be redeemed via the large-threshold path - full-signature
 redemption is unaffected, since it never depends on this table.
-`FORMAT_VERSION` bumped 1 -> 2 when this table was added; a version-1 file
-is rejected outright rather than read as "empty ledger" - simpler, and
+`FORMAT_VERSION` bumped 1 -> 2 when this table was added, then 2 -> 3 to
+add `color`/`icon` to `issuer_programs`/`collector_cards` (card
+personalization, TODO.md "Product / UX"). An older-version file is
+rejected outright rather than read with defaulted fields - simpler, and
 this early pre-release there's no real backup file anyone needs read back.
 
 A reader must reject the whole snapshot (as malformed) if the version byte
@@ -153,8 +159,8 @@ deterministic key seed and manifest bytes standing in for real ones), one
 issued card, every other table empty:
 
 ```
-snapshot (220 bytes):
-0200000001001a4f554253493746464e524f425a49544948504b524c583748464c000c4a6f65277320436f666665650000000a000b4672656520636f66666565000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f00140102030405060708090a0b0c0d0e0f10111213140000018bcfe5680000000001001a4f554253493746464e524f425a49544948504b524c583748464c002431313131313131312d313131312d313131312d313131312d3131313131313131313131310000018bcfe56be800000000000000000000000000000000
+snapshot (229 bytes):
+0300000001001a4f554253493746464e524f425a49544948504b524c583748464c000c4a6f65277320436f666665650000000a000b4672656520636f66666565000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f00140102030405060708090a0b0c0d0e0f10111213140000018bcfe56800ff00897b0003e2989500000001001a4f554253493746464e524f425a49544948504b524c583748464c002431313131313131312d313131312d313131312d313131312d3131313131313131313131310000018bcfe56be800000000000000000000000000000000
 ```
 
 Exercised by `BackupFormatVectorTest` (`:backup`), alongside

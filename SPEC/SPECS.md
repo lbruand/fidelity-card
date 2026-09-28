@@ -136,13 +136,15 @@ The program's QR (used for joining, §6.1) encodes:
 
 ```json
 {
-  "v": 3,
+  "v": 4,
   "type": "program",
   "program_id": "...",
   "issuer_pubkey": "base64",
   "name": "Joe's Coffee",
   "threshold": 10,
   "reward": "Free coffee",
+  "color": "0xFF00897B",
+  "icon": "☕",
   "sig": "base64(Ed25519 signature over the above fields by issuer_privkey)"
 }
 ```
@@ -154,6 +156,12 @@ joining time — protecting the collector against an issuer later claiming
 verifying every later Stamp Token and Redemption Certificate for this
 program — the *only* trust bootstrap needed; see §6.1 for why no separate
 enrollment handshake or Card Certificate is needed on top of this.
+
+`color`/`icon` are the card's visual personality (TODO.md "Product / UX")
+- an ARGB int and a short string (e.g. one emoji), both opaque to the
+protocol itself (just signed alongside everything else so a collector's
+rendering of them can't be tampered with in transit); a UI layer defines
+whatever fixed palette/icon set it offers when creating a program.
 
 ### 5.2 Stamp Token
 
@@ -346,14 +354,17 @@ that matters.
 Local storage only (Room/SQLite), no cloud sync in v1. Suggested schema:
 
 ```
-IssuerProgram(program_id PK, name, threshold, reward, privkey_alias, created_at)
+IssuerProgram(program_id PK, name, threshold, reward, privkey_alias, created_at,
+              color, icon)  -- color/icon: card personalization, see §5.1
 IssuedCard(program_id, card_id PK, created_at)  -- lazily created, see §6.1
 RedeemedStamp(program_id, card_id, stamp_id_hex, redeemed_at)  -- PK (program_id, card_id, stamp_id_hex)
 IssuerMintedStamp(program_id, card_id, stamp_id_hex, minted_at)  -- PK (program_id, card_id, stamp_id_hex),
               large-threshold redemption ledger, see §6.3
 
 CollectorCard(program_id, card_id PK, issuer_pubkey, program_name, threshold,
-              reward, created_at)  -- card_id is just a locally-generated string, see §4
+              reward, created_at, color, icon)  -- card_id is just a
+              locally-generated string, see §4; color/icon copied from the
+              Program Manifest at join time, see §5.1
 CollectorStamp(card_id, stamp_id_hex, stamp_token_bytes)  -- PK (card_id, stamp_id_hex)
 ```
 

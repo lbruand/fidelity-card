@@ -31,6 +31,8 @@ data class CardSummary(
     val programName: String,
     val reward: String,
     val progress: CardProgress,
+    val color: Int,
+    val icon: String,
 )
 
 sealed interface StampAcceptOutcome {
@@ -96,9 +98,19 @@ class CollectorRepository(
             threshold = program.threshold,
             reward = program.reward,
             createdAt = System.currentTimeMillis(),
+            color = program.color,
+            icon = program.icon,
         )
         cardDao.insert(entity)
-        return CardSummary(entity.cardId, entity.programId, entity.programName, entity.reward, CardProgress.compute(0, entity.threshold))
+        return CardSummary(
+            entity.cardId,
+            entity.programId,
+            entity.programName,
+            entity.reward,
+            CardProgress.compute(0, entity.threshold),
+            entity.color,
+            entity.icon,
+        )
     }
 
     suspend fun buildStampRequest(cardId: String): ByteArray? {
@@ -209,5 +221,5 @@ class CollectorRepository(
     }
 
     private fun CardWithStampCount.toSummary() =
-        CardSummary(cardId, programId, programName, reward, CardProgress.compute(stampCount, threshold))
+        CardSummary(cardId, programId, programName, reward, CardProgress.compute(stampCount, threshold), color, icon)
 }

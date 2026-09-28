@@ -23,7 +23,10 @@ class LoyaltyProtocolFlowTest {
         val issuer = SigningKeyPair.generate()
 
         // 1. Issuer creates a Program and shows it as a QR code.
-        val issuedProgram = ProgramManifest.issue(issuer, name = "Joe's Coffee", threshold = 10, reward = "Free coffee")
+        val issuedProgram = ProgramManifest.issue(
+            issuer, name = "Joe's Coffee", threshold = 10, reward = "Free coffee",
+            color = 0xFF00897B.toInt(), icon = "☕",
+        )
         val programQrBytes = issuedProgram.toWireBytes()
 
         // Collector scans it. From here on the collector only trusts what

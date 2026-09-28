@@ -74,10 +74,10 @@ class BackupRepository(private val database: FidelityCardDatabase) {
     }
 
     private fun IssuerProgramEntity.toRow() =
-        IssuerProgramRow(programId, name, threshold, reward, issuerSeed, programManifestBytes, createdAt)
+        IssuerProgramRow(programId, name, threshold, reward, issuerSeed, programManifestBytes, createdAt, color, icon)
 
     private fun IssuerProgramRow.toEntity() =
-        IssuerProgramEntity(programId, name, threshold, reward, issuerSeed, programManifestBytes, createdAt)
+        IssuerProgramEntity(programId, name, threshold, reward, issuerSeed, programManifestBytes, createdAt, color, icon)
 
     private fun IssuedCardEntity.toRow() = IssuedCardRow(programId, cardId, createdAt)
 
@@ -88,10 +88,10 @@ class BackupRepository(private val database: FidelityCardDatabase) {
     private fun RedeemedStampRow.toEntity() = RedeemedStampEntity(programId, cardId, stampIdHex, redeemedAt)
 
     private fun CollectorCardEntity.toRow() =
-        CollectorCardRow(cardId, programId, issuerPublicKey, programName, threshold, reward, createdAt)
+        CollectorCardRow(cardId, programId, issuerPublicKey, programName, threshold, reward, createdAt, color, icon)
 
     private fun CollectorCardRow.toEntity() =
-        CollectorCardEntity(cardId, programId, issuerPublicKey, programName, threshold, reward, createdAt)
+        CollectorCardEntity(cardId, programId, issuerPublicKey, programName, threshold, reward, createdAt, color, icon)
 
     private fun CollectorStampEntity.toRow() = CollectorStampRow(cardId, stampIdHex, stampTokenBytes)
 

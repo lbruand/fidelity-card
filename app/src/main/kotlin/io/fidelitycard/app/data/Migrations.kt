@@ -17,3 +17,17 @@ val MIGRATION_4_5: Migration = Migration(4, 5) { db ->
             "PRIMARY KEY(`programId`, `cardId`, `stampIdHex`))",
     )
 }
+
+/**
+ * Adds [IssuerProgramEntity.color]/[icon] and [CollectorCardEntity.color]/[icon]
+ * (card personalization, TODO.md "Product / UX"). Existing rows predate the
+ * feature and get a fixed default (the app's own brand teal, `0xFF00897B`
+ * i.e. `-16742021` as a signed 32-bit `INTEGER`, and a plain star) rather
+ * than `NULL`, since both columns are `NOT NULL` in the entities.
+ */
+val MIGRATION_5_6: Migration = Migration(5, 6) { db ->
+    db.execSQL("ALTER TABLE `issuer_programs` ADD COLUMN `color` INTEGER NOT NULL DEFAULT -16742021")
+    db.execSQL("ALTER TABLE `issuer_programs` ADD COLUMN `icon` TEXT NOT NULL DEFAULT '⭐'")
+    db.execSQL("ALTER TABLE `collector_cards` ADD COLUMN `color` INTEGER NOT NULL DEFAULT -16742021")
+    db.execSQL("ALTER TABLE `collector_cards` ADD COLUMN `icon` TEXT NOT NULL DEFAULT '⭐'")
+}

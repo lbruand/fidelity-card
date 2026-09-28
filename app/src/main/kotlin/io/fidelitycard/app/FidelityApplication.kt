@@ -7,6 +7,7 @@ import io.fidelitycard.app.data.CollectorRepository
 import io.fidelitycard.app.data.FidelityCardDatabase
 import io.fidelitycard.app.data.IssuerRepository
 import io.fidelitycard.app.data.MIGRATION_4_5
+import io.fidelitycard.app.data.MIGRATION_5_6
 import io.fidelitycard.app.data.ModePreference
 
 /**
@@ -28,7 +29,7 @@ class FidelityApplication : Application() {
             // Room throws if one is missing instead of silently wiping
             // (TODO.md, SPEC/SPECS.md §8).
             .fallbackToDestructiveMigrationFrom(true, 1, 2, 3)
-            .addMigrations(MIGRATION_4_5)
+            .addMigrations(MIGRATION_4_5, MIGRATION_5_6)
             .build()
     }
 
