@@ -6,18 +6,16 @@ import androidx.room.RoomDatabase
 @Database(
     entities = [
         IssuerProgramEntity::class,
-        IssuedCardEntity::class,
         RedeemedStampEntity::class,
         CollectorCardEntity::class,
         CollectorStampEntity::class,
         IssuerMintedStampEntity::class,
     ],
-    version = 6,
+    version = 7,
     exportSchema = true,
 )
 abstract class FidelityCardDatabase : RoomDatabase() {
     abstract fun issuerProgramDao(): IssuerProgramDao
-    abstract fun issuedCardDao(): IssuedCardDao
     abstract fun redeemedStampDao(): RedeemedStampDao
     abstract fun collectorCardDao(): CollectorCardDao
     abstract fun collectorStampDao(): CollectorStampDao

@@ -27,33 +27,12 @@ interface IssuerProgramDao {
 }
 
 @Dao
-interface IssuedCardDao {
-    @Insert
-    suspend fun insert(card: IssuedCardEntity)
-
-    @Insert
-    suspend fun insertAll(cards: List<IssuedCardEntity>)
-
-    @Query("SELECT * FROM issued_cards WHERE programId = :programId AND cardId = :cardId")
-    suspend fun find(programId: String, cardId: String): IssuedCardEntity?
-
-    @Query("SELECT * FROM issued_cards")
-    suspend fun getAll(): List<IssuedCardEntity>
-
-    @Query("DELETE FROM issued_cards")
-    suspend fun deleteAll()
-}
-
-@Dao
 interface RedeemedStampDao {
     @Insert
     suspend fun insertAll(stamps: List<RedeemedStampEntity>)
 
-    @Query(
-        "SELECT stampIdHex FROM redeemed_stamps WHERE programId = :programId AND cardId = :cardId " +
-            "AND stampIdHex IN (:stampIdHexes)",
-    )
-    suspend fun findAlreadyRedeemed(programId: String, cardId: String, stampIdHexes: List<String>): List<String>
+    @Query("SELECT stampIdHex FROM redeemed_stamps WHERE programId = :programId AND stampIdHex IN (:stampIdHexes)")
+    suspend fun findAlreadyRedeemed(programId: String, stampIdHexes: List<String>): List<String>
 
     @Query("SELECT * FROM redeemed_stamps")
     suspend fun getAll(): List<RedeemedStampEntity>
@@ -70,11 +49,8 @@ interface IssuerMintedStampDao {
     @Insert
     suspend fun insertAll(stamps: List<IssuerMintedStampEntity>)
 
-    @Query(
-        "SELECT stampIdHex FROM issuer_minted_stamps WHERE programId = :programId AND cardId = :cardId " +
-            "AND stampIdHex IN (:stampIdHexes)",
-    )
-    suspend fun findKnown(programId: String, cardId: String, stampIdHexes: List<String>): List<String>
+    @Query("SELECT stampIdHex FROM issuer_minted_stamps WHERE programId = :programId AND stampIdHex IN (:stampIdHexes)")
+    suspend fun findKnown(programId: String, stampIdHexes: List<String>): List<String>
 
     @Query("SELECT * FROM issuer_minted_stamps")
     suspend fun getAll(): List<IssuerMintedStampEntity>

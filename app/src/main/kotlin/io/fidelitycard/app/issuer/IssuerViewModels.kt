@@ -25,7 +25,7 @@ class CreateBusinessViewModel(private val repository: IssuerRepository) : ViewMo
     }
 }
 
-/** What the "Scan a customer" button is currently doing. */
+/** What the business detail screen's "Give a stamp"/"Scan a customer" actions are currently showing. */
 sealed interface ScanCustomerState {
     data object Idle : ScanCustomerState
     data class Responding(val bytes: ByteArray, val message: String) : ScanCustomerState
@@ -47,6 +47,16 @@ class BusinessDetailViewModel(
         viewModelScope.launch { _program.value = repository.findProgram(programId) }
     }
 
+    /** "Give a stamp": mints and shows it immediately, no scan needed first (SPEC/SPECS.md §6.2). */
+    fun giveStamp() {
+        viewModelScope.launch {
+            _scanState.value = when (val bytes = repository.mintStamp(programId)) {
+                null -> ScanCustomerState.Failed("This business could not be found")
+                else -> ScanCustomerState.Responding(bytes, "Show this to your customer")
+            }
+        }
+    }
+
     fun onCustomerScanned(bytes: ByteArray?) {
         if (bytes == null) {
             _scanState.value = ScanCustomerState.Idle
@@ -54,8 +64,6 @@ class BusinessDetailViewModel(
         }
         viewModelScope.launch {
             _scanState.value = when (val outcome = repository.handleCustomerMessage(programId, bytes)) {
-                is IssuerScanOutcome.Stamped ->
-                    ScanCustomerState.Responding(outcome.responseBytes, "Stamp added! Show this back to your customer")
                 is IssuerScanOutcome.Redeemed ->
                     ScanCustomerState.Responding(outcome.responseBytes, "Reward redeemed! Show this back to your customer")
                 is IssuerScanOutcome.Failed -> ScanCustomerState.Failed(outcome.message)

@@ -60,7 +60,7 @@ class JoinFlowViewModel(private val repository: CollectorRepository) : ViewModel
     }
 }
 
-/** Shared shape for "show a request, then scan the business's reply" - used by both stamping and redeeming. */
+/** Shared shape for "show a request, then scan the business's reply" - redemption only (SPEC/SPECS.md §6.3). */
 sealed interface ExchangeState {
     data object Preparing : ExchangeState
     data class ShowRequest(val bytes: ByteArray, val instruction: String) : ExchangeState
@@ -69,40 +69,34 @@ sealed interface ExchangeState {
     data class Failed(val message: String) : ExchangeState
 }
 
+/**
+ * Getting a stamp is a single one-way scan (SPEC/SPECS.md §6.2): the
+ * issuer mints and shows a Stamp Token unprompted, this device just scans
+ * whatever it's shown - there is no request to build or show first.
+ */
+sealed interface GetStampState {
+    data object ReadyToScan : GetStampState
+    data class Done(val message: String) : GetStampState
+    data class Failed(val message: String) : GetStampState
+}
+
 class StampFlowViewModel(private val repository: CollectorRepository, private val cardId: String) : ViewModel() {
 
-    private val _state = MutableStateFlow<ExchangeState>(ExchangeState.Preparing)
-    val state: StateFlow<ExchangeState> = _state
-
-    init {
-        prepareRequest()
-    }
-
-    fun onNextTapped() {
-        _state.value = ExchangeState.Scanning
-    }
+    private val _state = MutableStateFlow<GetStampState>(GetStampState.ReadyToScan)
+    val state: StateFlow<GetStampState> = _state
 
     fun onScanned(bytes: ByteArray?) {
         if (bytes == null) return
         viewModelScope.launch {
             _state.value = when (val outcome = repository.acceptStampResponse(cardId, bytes)) {
-                is StampAcceptOutcome.Accepted -> ExchangeState.Done("Stamp added!")
-                is StampAcceptOutcome.Rejected -> ExchangeState.Failed(outcome.reason)
+                is StampAcceptOutcome.Accepted -> GetStampState.Done("Stamp added!")
+                is StampAcceptOutcome.Rejected -> GetStampState.Failed(outcome.reason)
             }
         }
     }
 
-    fun retry() = prepareRequest()
-
-    private fun prepareRequest() {
-        viewModelScope.launch {
-            val bytes = repository.buildStampRequest(cardId)
-            _state.value = if (bytes != null) {
-                ExchangeState.ShowRequest(bytes, "Show this to the cashier")
-            } else {
-                ExchangeState.Failed("This card could not be found")
-            }
-        }
+    fun retry() {
+        _state.value = GetStampState.ReadyToScan
     }
 }
 

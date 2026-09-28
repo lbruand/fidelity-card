@@ -31,6 +31,10 @@ TODO
        custom image upload were considered and rejected as more than this
        app needs - a fixed palette keeps the picker a two-tap choice and
        every rendering a single simple badge shape.
+ * [ ] There should be a bgcolor for the fidcard. The icon and the (text)color 
+       and bgcolor should reused across the gui. We should use the icon as the
+       stamp itself, instead of using the whitetick mark. We should also show
+       the icon and color on the QRCode (icon in the center of the QRcode)
 
 ## From the spec (SPEC/SPECS.md)
 
@@ -110,6 +114,25 @@ TODO
             how low-stakes this app is (a free coffee, not a payment), but not
             a substitute for it.
        (SPEC §6.3/§11)
+ * [x] ~~Why does stamping need a round trip?~~ — resolved by removing the round
+       trip: Stamp Token and Redemption Certificate dropped `card_id` entirely
+       (wire format bumped 4 -> 5, CRYPTO_WIRE_FORMAT.md §5.2/§5.3, SPEC
+       §4/§5.2/§11). The issuer used to need the collector's `card_id` before
+       it could mint a valid (card-bound) stamp, which forced minting to be a
+       request/response round trip; once stamps stopped being bound to any
+       card, minting became a single one-way QR (issuer mints and shows,
+       collector scans, done) - `CustomerMessage.StampRequest` is gone,
+       `IssuerRepository.mintStamp`/`giveStamp` replaces the old scan-triggered
+       `handleStamp`, and the collector's "Get a stamp" screen is now a plain
+       scanner (`GetStampState`) instead of a two-step show/scan exchange.
+       `RedeemedStamp`/`IssuerMintedStamp` are now scoped per program, not per
+       card (DB version 6 -> 7, `MIGRATION_6_7`, drops `issued_cards` entirely
+       and rebuilds both tables without their `cardId` column/PK segment);
+       backup format bumped 3 -> 4 to match. Accepted trade-off: a stamp's
+       value now lives in holding its bytes, so a leaked/copied stamp is
+       redeemable by whoever gets to redemption first, not just its original
+       recipient - judged acceptable given this app's own stated scope (a free
+       coffee, not a payment credential).
  * [ ] NFC as a second transport alongside QR, for a one-tap exchange instead of
        show-then-scan. The token format is already transport-agnostic, so this
        is protocol-compatible, just a different Android API (SPEC §11).

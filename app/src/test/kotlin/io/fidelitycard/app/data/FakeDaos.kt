@@ -31,24 +31,6 @@ class FakeIssuerProgramDao : IssuerProgramDao {
     override suspend fun deleteAll() = rows.clear()
 }
 
-class FakeIssuedCardDao : IssuedCardDao {
-    private val rows = mutableMapOf<Pair<String, String>, IssuedCardEntity>()
-
-    override suspend fun insert(card: IssuedCardEntity) {
-        rows[card.programId to card.cardId] = card
-    }
-
-    override suspend fun insertAll(cards: List<IssuedCardEntity>) {
-        cards.forEach { rows[it.programId to it.cardId] = it }
-    }
-
-    override suspend fun find(programId: String, cardId: String): IssuedCardEntity? = rows[programId to cardId]
-
-    override suspend fun getAll(): List<IssuedCardEntity> = rows.values.toList()
-
-    override suspend fun deleteAll() = rows.clear()
-}
-
 class FakeRedeemedStampDao : RedeemedStampDao {
     private val rows = mutableListOf<RedeemedStampEntity>()
 
@@ -56,8 +38,8 @@ class FakeRedeemedStampDao : RedeemedStampDao {
         rows += stamps
     }
 
-    override suspend fun findAlreadyRedeemed(programId: String, cardId: String, stampIdHexes: List<String>): List<String> =
-        rows.filter { it.programId == programId && it.cardId == cardId && it.stampIdHex in stampIdHexes }
+    override suspend fun findAlreadyRedeemed(programId: String, stampIdHexes: List<String>): List<String> =
+        rows.filter { it.programId == programId && it.stampIdHex in stampIdHexes }
             .map { it.stampIdHex }
 
     override suspend fun getAll(): List<RedeemedStampEntity> = rows.toList()
@@ -76,8 +58,8 @@ class FakeIssuerMintedStampDao : IssuerMintedStampDao {
         rows += stamps
     }
 
-    override suspend fun findKnown(programId: String, cardId: String, stampIdHexes: List<String>): List<String> =
-        rows.filter { it.programId == programId && it.cardId == cardId && it.stampIdHex in stampIdHexes }
+    override suspend fun findKnown(programId: String, stampIdHexes: List<String>): List<String> =
+        rows.filter { it.programId == programId && it.stampIdHex in stampIdHexes }
             .map { it.stampIdHex }
 
     override suspend fun getAll(): List<IssuerMintedStampEntity> = rows.toList()

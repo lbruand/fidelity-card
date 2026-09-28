@@ -19,7 +19,6 @@ class WireFormatTestVectorsTest {
     private val stampId = ByteArray(16) { it.toByte() }
     private val redemptionId = ByteArray(16) { (it + 1).toByte() }
     private val fixedInstant = Instant.ofEpochMilli(1_700_000_000_000L)
-    private val cardId = "11111111-1111-1111-1111-111111111111"
     private val programId = "OUBSI7FFNROBZITIHPKRLX7HFL"
 
     @Test
@@ -32,27 +31,27 @@ class WireFormatTestVectorsTest {
 
         assertEquals(programId, manifest.programId)
         assertHexEquals(
-            "0401001a4f554253493746464e524f425a49544948504b524c583748464c03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8000c4a6f65277320436f666665650000000a000b4672656520636f66666565ff00897b0003e29895e775aaea02d626b305216ba5becf86a6f1b5d39e179f7f3e34f9f61be4d5199fde76bf8a695160fecd2de7ed3b0d644f3a37de391e3bb628f6e1e041eb067002",
+            "0501001a4f554253493746464e524f425a49544948504b524c583748464c03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8000c4a6f65277320436f666665650000000a000b4672656520636f66666565ff00897b0003e29895cb5ed34bb2bb84806f425bd8d74f90b471b89235a29f58172d8611ea9408a71ee8a24e7eaf46e7a735c70388eeea5e2a5e85936b5c5c3daf170190508f980b0b",
             manifest.toWireBytes(),
         )
     }
 
     @Test
     fun `stamp token matches the published vector`() {
-        val stamp = StampToken.mint(issuer, programId, cardId, issuedAt = fixedInstant, stampId = stampId)
+        val stamp = StampToken.mint(issuer, programId, issuedAt = fixedInstant, stampId = stampId)
 
         assertHexEquals(
-            "0402001a4f554253493746464e524f425a49544948504b524c583748464c002431313131313131312d313131312d313131312d313131312d313131313131313131313131000102030405060708090a0b0c0d0e0f0000018bcfe568006e69fe20b4acf3a2f23562a6c4ae6eb301658e375762e02da2a2232d5cbd8f062437662ea747566bb544b93b95c3f50dc02d8c460f1b079ad6fe79ee2877a00f",
+            "0502001a4f554253493746464e524f425a49544948504b524c583748464c000102030405060708090a0b0c0d0e0f0000018bcfe568008ecd7d3da43852d6e8b13e868245e8a1becf8048cd2b955fff47ea20a084f1dd1ccdcebb4c5a8db6380adb9b35e9c1254bc25cf82f392c32b690011ee7ff2c00",
             stamp.toWireBytes(),
         )
     }
 
     @Test
     fun `compact stamp proof matches the published vector`() {
-        val stamp = StampToken.mint(issuer, programId, cardId, issuedAt = fixedInstant, stampId = stampId)
+        val stamp = StampToken.mint(issuer, programId, issuedAt = fixedInstant, stampId = stampId)
 
         assertHexEquals(
-            "000102030405060708090a0b0c0d0e0f0000018bcfe568006e69fe20b4acf3a2f23562a6c4ae6eb301658e375762e02da2a2232d5cbd8f062437662ea747566bb544b93b95c3f50dc02d8c460f1b079ad6fe79ee2877a00f",
+            "000102030405060708090a0b0c0d0e0f0000018bcfe568008ecd7d3da43852d6e8b13e868245e8a1becf8048cd2b955fff47ea20a084f1dd1ccdcebb4c5a8db6380adb9b35e9c1254bc25cf82f392c32b690011ee7ff2c00",
             stamp.toCompactProofBytes(),
         )
     }
@@ -60,11 +59,11 @@ class WireFormatTestVectorsTest {
     @Test
     fun `redemption certificate matches the published vector`() {
         val redemption = RedemptionCertificate.issue(
-            issuer, programId, cardId, redeemedCount = 10, redeemedAt = fixedInstant, redemptionId = redemptionId,
+            issuer, programId, redeemedCount = 10, redeemedAt = fixedInstant, redemptionId = redemptionId,
         )
 
         assertHexEquals(
-            "0403001a4f554253493746464e524f425a49544948504b524c583748464c002431313131313131312d313131312d313131312d313131312d3131313131313131313131310000000a0000018bcfe568000102030405060708090a0b0c0d0e0f108044ce188c8c0f3658e68ce1fc0d7356a06b23df11fa2423fa32144411e6f8a235a1b1cf4cfcfb5c9d168a70868ab373bf730d07e4633b34c0c461e070214101",
+            "0503001a4f554253493746464e524f425a49544948504b524c583748464c0000000a0000018bcfe568000102030405060708090a0b0c0d0e0f107bf38703b2c79c275b65a6a15fb51da735ef491d7cdbe29a1b7fec3c00af681f56ae6f3d2f39afe6a249bfc940740c54e94ae36977d6e87761736ca5792e6508",
             redemption.toWireBytes(),
         )
     }

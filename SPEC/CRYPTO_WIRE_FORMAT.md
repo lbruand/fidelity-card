@@ -1,6 +1,6 @@
 # Crypto wire format
 
-Status: **v4**, implemented in `:crypto` (`io.fidelitycard.crypto`)
+Status: **v5**, implemented in `:crypto` (`io.fidelitycard.crypto`)
 
 This document is the byte-for-byte specification of the signed message
 types in [SPEC/SPECS.md](SPECS.md) §5. It exists so a **non-Kotlin**
@@ -17,10 +17,15 @@ reference implementation, not the spec; this file is the spec.
 > wasn't buying real security). **v4** added `color`/`icon` to Program
 > Manifest for card personalization (SPEC/SPECS.md §5.1, `TODO.md`
 > "Product / UX") - Stamp Token and Redemption Certificate didn't change
-> shape, but the shared version byte still moved for them too. The
-> version byte is bumped on every one of these changes so bytes from
+> shape, but the shared version byte still moved for them too. **v5**
+> removed `card_id` from Stamp Token and Redemption Certificate entirely:
+> a stamp's value now lives in holding its bytes, not in any collector
+> identity, so minting no longer needs the issuer to learn anything from
+> the collector first (SPEC/SPECS.md §4/§6.2) - it's a one-way QR (issuer
+> mints and shows, collector scans), not a request/response round trip.
+> The version byte is bumped on every one of these changes so bytes from
 > different versions can never be silently misparsed as each other; there
-> is no compatibility between v1/v2/v3/v4.
+> is no compatibility between v1/v2/v3/v4/v5.
 
 ## 1. Design choice: fixed binary layout, not CBOR
 
@@ -55,7 +60,7 @@ Every message starts with:
 
 | Field | Type | Value |
 |---|---|---|
-| `version` | `byte` | `4` |
+| `version` | `byte` | `5` |
 | `type` | `byte` | see table below |
 
 | Message | `type` |
@@ -115,22 +120,30 @@ as an issuer-side operational/trust matter, the same as a paper card — the
 protocol only cryptographically enforces that a stamp can't be forged and
 can't be redeemed twice (§5.3).
 
+Deliberately **not** bound to a collector/card id (SPEC/SPECS.md §4/§6.2):
+whoever holds the valid bytes can redeem it, the same way a physical
+stamp card's value lives in holding the card, not in an identity check.
+This is what lets minting a stamp be a single one-way QR (issuer mints
+and shows, collector scans, done) instead of a request/response round
+trip — the issuer never needs to learn who it's minting for. The accepted
+trade-off: a leaked/copied stamp is redeemable by whoever gets to
+redemption first, not just its original recipient.
+
 | Order | Field | Type |
 |---|---|---|
 | 1 | `program_id` | `string` |
-| 2 | `card_id` | `string` |
-| 3 | `stamp_id` | `fixedBytes(16)`, random, chosen by the issuer at mint time |
-| 4 | `issued_at` | `int64` |
+| 2 | `stamp_id` | `fixedBytes(16)`, random, chosen by the issuer at mint time |
+| 3 | `issued_at` | `int64` |
 | — | `signature` | `fixedBytes(64)`, by the program's issuer key |
 
 #### 5.2.1 Compact Stamp Proof (batched redemption, no `type`/`version` byte of its own)
 
 Not a standalone message — a **fragment** used only inside a Redemption
 Request (an app-level container, not part of this crypto wire format
-itself; see SPEC/SPECS.md §6.3), to redeem many stamps for one card
-without repeating `program_id`/`card_id` inside every single one of them.
-It carries exactly the part of a Stamp Token that a full `type = 2`
-message doesn't already say once, at the container level:
+itself; see SPEC/SPECS.md §6.3), to redeem many stamps for one program
+without repeating `program_id` inside every single one of them. It
+carries exactly the part of a Stamp Token that a full `type = 2` message
+doesn't already say once, at the container level:
 
 | Order | Field | Type |
 |---|---|---|
@@ -142,11 +155,11 @@ Total: exactly 88 bytes, always — no length prefix needed, since a
 container that already knows how many stamps it holds can just read
 `count × 88` contiguous bytes. To verify one, a reader reconstructs the
 exact same `signed_payload` a full Stamp Token would have had — `version
-|| type=2 || program_id || card_id || stamp_id || issued_at` — using the
-`program_id`/`card_id` supplied by the surrounding container, then checks
-the signature against it exactly as in §5.2. Supplying the wrong
-`program_id`/`card_id` here isn't a way to bypass anything: it reconstructs
-different bytes than were actually signed, so verification simply fails.
+|| type=2 || program_id || stamp_id || issued_at` — using the
+`program_id` supplied by the surrounding container, then checks the
+signature against it exactly as in §5.2. Supplying the wrong `program_id`
+here isn't a way to bypass anything: it reconstructs different bytes than
+were actually signed, so verification simply fails.
 
 ### 5.3 Redemption Certificate (`type = 3`)
 
@@ -159,10 +172,9 @@ its own redeemed-stamps store, not in this certificate.
 | Order | Field | Type |
 |---|---|---|
 | 1 | `program_id` | `string` |
-| 2 | `card_id` | `string` |
-| 3 | `redeemed_count` | `int32` (must be > 0) |
-| 4 | `redeemed_at` | `int64` |
-| 5 | `redemption_id` | `fixedBytes(16)`, random |
+| 2 | `redeemed_count` | `int32` (must be > 0) |
+| 3 | `redeemed_at` | `int64` |
+| 4 | `redemption_id` | `fixedBytes(16)`, random |
 | — | `signature` | `fixedBytes(64)`, by the program's issuer key |
 
 ## 6. Program ID derivation
@@ -205,30 +217,30 @@ nonce = `00 01 02 ... 0f` (16 bytes):
 program_id: OUBSI7FFNROBZITIHPKRLX7HFL
 
 wire bytes (166 bytes):
-0401001a4f554253493746464e524f425a49544948504b524c583748464c03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8000c4a6f65277320436f666665650000000a000b4672656520636f66666565ff00897b0003e29895e775aaea02d626b305216ba5becf86a6f1b5d39e179f7f3e34f9f61be4d5199fde76bf8a695160fecd2de7ed3b0d644f3a37de391e3bb628f6e1e041eb067002
+0501001a4f554253493746464e524f425a49544948504b524c583748464c03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8000c4a6f65277320436f666665650000000a000b4672656520636f66666565ff00897b0003e29895cb5ed34bb2bb84806f425bd8d74f90b471b89235a29f58172d8611ea9408a71ee8a24e7eaf46e7a735c70388eeea5e2a5e85936b5c5c3daf170190508f980b0b
 ```
 
-**Stamp Token** — `program_id` as above, `card_id = "11111111-1111-1111-1111-111111111111"`, `stamp_id = 00 01 ... 0f` (16 bytes), `issued_at = 1700000000000`:
+**Stamp Token** — `program_id` as above, `stamp_id = 00 01 ... 0f` (16 bytes), `issued_at = 1700000000000`:
 
 ```
-wire bytes (156 bytes):
-0402001a4f554253493746464e524f425a49544948504b524c583748464c002431313131313131312d313131312d313131312d313131312d313131313131313131313131000102030405060708090a0b0c0d0e0f0000018bcfe568006e69fe20b4acf3a2f23562a6c4ae6eb301658e375762e02da2a2232d5cbd8f062437662ea747566bb544b93b95c3f50dc02d8c460f1b079ad6fe79ee2877a00f
+wire bytes (118 bytes):
+0502001a4f554253493746464e524f425a49544948504b524c583748464c000102030405060708090a0b0c0d0e0f0000018bcfe568008ecd7d3da43852d6e8b13e868245e8a1becf8048cd2b955fff47ea20a084f1dd1ccdcebb4c5a8db6380adb9b35e9c1254bc25cf82f392c32b690011ee7ff2c00
 ```
 
 **Compact Stamp Proof** (§5.2.1) for that same Stamp Token — always exactly
 the wire bytes above's trailing 88 bytes (`stamp_id || issued_at ||
-signature`), since `program_id`/`card_id` are what got stripped out:
+signature`), since `program_id` is what got stripped out:
 
 ```
 compact proof (88 bytes):
-000102030405060708090a0b0c0d0e0f0000018bcfe568006e69fe20b4acf3a2f23562a6c4ae6eb301658e375762e02da2a2232d5cbd8f062437662ea747566bb544b93b95c3f50dc02d8c460f1b079ad6fe79ee2877a00f
+000102030405060708090a0b0c0d0e0f0000018bcfe568008ecd7d3da43852d6e8b13e868245e8a1becf8048cd2b955fff47ea20a084f1dd1ccdcebb4c5a8db6380adb9b35e9c1254bc25cf82f392c32b690011ee7ff2c00
 ```
 
-**Redemption Certificate** — same `program_id`/`card_id`, `redeemed_count = 10`, `redeemed_at = 1700000000000`, `redemption_id = 01 02 ... 10` (16 bytes):
+**Redemption Certificate** — same `program_id`, `redeemed_count = 10`, `redeemed_at = 1700000000000`, `redemption_id = 01 02 ... 10` (16 bytes):
 
 ```
-wire bytes (160 bytes):
-0403001a4f554253493746464e524f425a49544948504b524c583748464c002431313131313131312d313131312d313131312d313131312d3131313131313131313131310000000a0000018bcfe568000102030405060708090a0b0c0d0e0f108044ce188c8c0f3658e68ce1fc0d7356a06b23df11fa2423fa32144411e6f8a235a1b1cf4cfcfb5c9d168a70868ab373bf730d07e4633b34c0c461e070214101
+wire bytes (122 bytes):
+0503001a4f554253493746464e524f425a49544948504b524c583748464c0000000a0000018bcfe568000102030405060708090a0b0c0d0e0f107bf38703b2c79c275b65a6a15fb51da735ef491d7cdbe29a1b7fec3c00af681f56ae6f3d2f39afe6a249bfc940740c54e94ae36977d6e87761736ca5792e6508
 ```
 
 A conforming implementation on any platform must: (a) reproduce these exact

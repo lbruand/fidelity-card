@@ -10,19 +10,28 @@ import java.security.SecureRandom
 import java.time.Instant
 
 /**
- * A single, unforgeable credit toward a card (SPEC/SPECS.md §5.3).
+ * A single, unforgeable credit toward a program (SPEC/SPECS.md §5.3).
  * Deliberately unordered: stamps are independent, uniquely-identified
  * grants rather than a numbered sequence. A [StampToken] on its own only
- * proves "the issuer signed this exact (program, card, stamp, moment)" -
- * nothing about how many other stamps this card has, or in what order.
+ * proves "the issuer signed this exact (program, stamp, moment)" - nothing
+ * about who holds it or how many other stamps exist.
+ *
+ * Deliberately **not** bound to a collector/card id (SPEC/SPECS.md §4/§6.2):
+ * whoever holds the valid bytes can redeem it, the same way a physical
+ * stamp card's value lives in holding the card, not in any identity check.
+ * This is what lets minting be a single one-way QR (issuer shows, collector
+ * scans, done) instead of a request/response round trip - the issuer never
+ * needs to learn who it's minting for. The accepted cost is a leaked/copied
+ * stamp being redeemable by whoever gets to redemption first, not just its
+ * original recipient - see SPEC/SPECS.md §7.1's threat table.
+ *
  * Preventing the same purchase from minting more than one stamp is treated
- * as an operational/trust matter for the issuer (same as a paper card),
- * not something the protocol enforces; preventing the same stamp from
- * being redeemed twice is enforced (see [RedemptionCertificate]).
+ * as an operational/trust matter for the issuer (same as a paper card), not
+ * something the protocol enforces; preventing the same stamp from being
+ * redeemed twice *is* enforced (see [RedemptionCertificate]).
  */
 class StampToken private constructor(
     val programId: String,
-    val cardId: String,
     val stampId: ByteArray,
     val issuedAt: Instant,
     private val signature: ByteArray,
@@ -30,18 +39,18 @@ class StampToken private constructor(
 
     fun toWireBytes(): ByteArray =
         WireWriter()
-            .apply { writeSignedPayload(this, programId, cardId, stampId, issuedAt) }
+            .apply { writeSignedPayload(this, programId, stampId, issuedAt) }
             .writeFixedBytes(signature, SIGNATURE_LENGTH_BYTES)
             .toByteArray()
 
     /**
-     * `stamp_id || issued_at || signature`, without `program_id`/`card_id` -
-     * for batching many stamps for the same card into one redemption request
-     * without repeating fields that are identical across the whole batch
-     * (SPEC/SPECS.md §6.3/§11). Pairs with [parseAndVerifyCompactProof],
-     * which the caller must supply the correct shared `program_id`/`card_id`
-     * to - that's what a full [toWireBytes] token would otherwise carry
-     * inline, and its absence here is exactly the space saving.
+     * `stamp_id || issued_at || signature`, without `program_id` - for
+     * batching many stamps into one redemption request without repeating a
+     * field that's identical across the whole batch (SPEC/SPECS.md
+     * §6.3/§11). Pairs with [parseAndVerifyCompactProof], which the caller
+     * must supply the correct shared `program_id` to - that's what a full
+     * [toWireBytes] token would otherwise carry inline, and its absence
+     * here is exactly the space saving.
      */
     fun toCompactProofBytes(): ByteArray =
         WireWriter()
@@ -57,7 +66,6 @@ class StampToken private constructor(
         fun mint(
             issuer: SigningKeyPair,
             programId: String,
-            cardId: String,
             issuedAt: Instant = Instant.now(),
             stampId: ByteArray = randomStampId(),
         ): StampToken {
@@ -67,11 +75,11 @@ class StampToken private constructor(
             val issuedAt = Instant.ofEpochMilli(issuedAt.toEpochMilli())
 
             val payload = WireWriter()
-                .apply { writeSignedPayload(this, programId, cardId, stampId, issuedAt) }
+                .apply { writeSignedPayload(this, programId, stampId, issuedAt) }
                 .toByteArray()
             val signature = issuer.sign(payload)
 
-            return StampToken(programId, cardId, stampId, issuedAt, signature)
+            return StampToken(programId, stampId, issuedAt, signature)
         }
 
         fun parseAndVerify(bytes: ByteArray, issuerPublicKey: VerifyingKey): StampToken {
@@ -79,27 +87,25 @@ class StampToken private constructor(
             reader.readAndVerifyHeader(MessageTag.STAMP)
 
             val programId = reader.readString()
-            val cardId = reader.readString()
             val stampId = reader.readFixedBytes(STAMP_ID_LENGTH_BYTES)
             val issuedAt = Instant.ofEpochMilli(reader.readInt64())
             val signature = reader.readFixedBytes(SIGNATURE_LENGTH_BYTES)
             reader.requireFullyConsumed()
 
             val payload = WireWriter()
-                .apply { writeSignedPayload(this, programId, cardId, stampId, issuedAt) }
+                .apply { writeSignedPayload(this, programId, stampId, issuedAt) }
                 .toByteArray()
             if (!issuerPublicKey.verify(payload, signature)) {
                 throw InvalidSignatureException("StampToken signature does not verify against the given issuer key")
             }
 
-            return StampToken(programId, cardId, stampId, issuedAt, signature)
+            return StampToken(programId, stampId, issuedAt, signature)
         }
 
-        /** Pairs with [StampToken.toCompactProofBytes] - see that method's doc for why `programId`/`cardId` are separate parameters. */
+        /** Pairs with [StampToken.toCompactProofBytes] - see that method's doc for why `programId` is a separate parameter. */
         fun parseAndVerifyCompactProof(
             compactProofBytes: ByteArray,
             programId: String,
-            cardId: String,
             issuerPublicKey: VerifyingKey,
         ): StampToken {
             require(compactProofBytes.size == COMPACT_PROOF_LENGTH_BYTES) {
@@ -112,26 +118,24 @@ class StampToken private constructor(
             reader.requireFullyConsumed()
 
             val payload = WireWriter()
-                .apply { writeSignedPayload(this, programId, cardId, stampId, issuedAt) }
+                .apply { writeSignedPayload(this, programId, stampId, issuedAt) }
                 .toByteArray()
             if (!issuerPublicKey.verify(payload, signature)) {
                 throw InvalidSignatureException("StampToken signature does not verify against the given issuer key")
             }
 
-            return StampToken(programId, cardId, stampId, issuedAt, signature)
+            return StampToken(programId, stampId, issuedAt, signature)
         }
 
         private fun writeSignedPayload(
             writer: WireWriter,
             programId: String,
-            cardId: String,
             stampId: ByteArray,
             issuedAt: Instant,
         ) {
             writer.writeByte(WIRE_VERSION)
             writer.writeByte(MessageTag.STAMP)
             writer.writeString(programId)
-            writer.writeString(cardId)
             writer.writeFixedBytes(stampId, STAMP_ID_LENGTH_BYTES)
             writer.writeInt64(issuedAt.toEpochMilli())
         }

@@ -3,7 +3,6 @@ package io.fidelitycard.crypto
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
-import java.util.UUID
 
 /**
  * Walks the whole protocol end to end (SPEC/SPECS.md §6): a business issues
@@ -17,9 +16,12 @@ class LoyaltyProtocolFlowTest {
     @Test
     fun `join, earn ten stamps and redeem`() {
         // The issuer (e.g. a coffee shop till) holds a key pair - no account,
-        // no server. The collector holds no cryptographic identity at all:
-        // a card id is just a locally-generated opaque string, since nothing
-        // in the protocol ever needs to verify who the collector is.
+        // no server. The collector holds no cryptographic identity at all,
+        // and neither does a stamp: nothing in the protocol ever needs to
+        // verify who the collector is, or tie a stamp to one particular
+        // collector (SPEC/SPECS.md §4/§6.2) - a stamp's value lives in
+        // holding its bytes, the same way a physical stamp card's value
+        // lives in holding the card.
         val issuer = SigningKeyPair.generate()
 
         // 1. Issuer creates a Program and shows it as a QR code.
@@ -34,18 +36,17 @@ class LoyaltyProtocolFlowTest {
         val program = ProgramManifest.parseAndVerify(programQrBytes)
         assertEquals("Free coffee", program.reward)
 
-        // 2. Joining is purely local: the collector picks a card id and
-        // starts tracking a card for this program. No round trip with the
-        // issuer, no certificate - the issuer only ever learns a card id
-        // exists the first time it mints a stamp for it (SPEC/SPECS.md §6.1).
-        val cardId = UUID.randomUUID().toString()
+        // 2. Joining is purely local (SPEC/SPECS.md §6.1): no round trip
+        // with the issuer, no certificate.
 
-        // 3. Stamping: ten purchases, ten QR round trips. Stamps are
-        // unordered - each is independently valid, deduplicated by its own
-        // random stamp id, not by position in a sequence.
+        // 3. Stamping: ten purchases, ten one-way QRs - the issuer mints and
+        // shows a stamp, the collector scans it, no reply needed (SPEC/SPECS.md
+        // §6.2). Stamps are unordered - each is independently valid,
+        // deduplicated by its own random stamp id, not by position in a
+        // sequence.
         val acceptedStampIds = mutableSetOf<List<Byte>>()
         repeat(program.threshold) {
-            val stampBytes = StampToken.mint(issuer, program.programId, cardId).toWireBytes()
+            val stampBytes = StampToken.mint(issuer, program.programId).toWireBytes()
 
             val stamp = StampToken.parseAndVerify(stampBytes, program.issuerPublicKey)
             assertTrue(acceptedStampIds.add(stamp.stampId.toList()), "every minted stamp id must be unique")
@@ -56,12 +57,10 @@ class LoyaltyProtocolFlowTest {
         val redemptionBytes = RedemptionCertificate.issue(
             issuer,
             program.programId,
-            cardId,
             redeemedCount = acceptedStampIds.size,
         ).toWireBytes()
         val redemption = RedemptionCertificate.parseAndVerify(redemptionBytes, program.issuerPublicKey)
 
-        assertEquals(cardId, redemption.cardId)
         assertTrue(redemption.redeemedCount >= program.threshold)
     }
 }

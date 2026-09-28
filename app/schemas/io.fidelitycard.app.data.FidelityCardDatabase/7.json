@@ -1,0 +1,238 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 7,
+    "identityHash": "eaaa92ef3a8a395345d4c0d2f2db5118",
+    "entities": [
+      {
+        "tableName": "issuer_programs",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`programId` TEXT NOT NULL, `name` TEXT NOT NULL, `threshold` INTEGER NOT NULL, `reward` TEXT NOT NULL, `issuerSeed` BLOB NOT NULL, `programManifestBytes` BLOB NOT NULL, `createdAt` INTEGER NOT NULL, `color` INTEGER NOT NULL, `icon` TEXT NOT NULL, PRIMARY KEY(`programId`))",
+        "fields": [
+          {
+            "fieldPath": "programId",
+            "columnName": "programId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "threshold",
+            "columnName": "threshold",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "reward",
+            "columnName": "reward",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "issuerSeed",
+            "columnName": "issuerSeed",
+            "affinity": "BLOB",
+            "notNull": true
+          },
+          {
+            "fieldPath": "programManifestBytes",
+            "columnName": "programManifestBytes",
+            "affinity": "BLOB",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "color",
+            "columnName": "color",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "icon",
+            "columnName": "icon",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "programId"
+          ]
+        }
+      },
+      {
+        "tableName": "redeemed_stamps",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`programId` TEXT NOT NULL, `stampIdHex` TEXT NOT NULL, `redeemedAt` INTEGER NOT NULL, PRIMARY KEY(`programId`, `stampIdHex`))",
+        "fields": [
+          {
+            "fieldPath": "programId",
+            "columnName": "programId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "stampIdHex",
+            "columnName": "stampIdHex",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "redeemedAt",
+            "columnName": "redeemedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "programId",
+            "stampIdHex"
+          ]
+        }
+      },
+      {
+        "tableName": "collector_cards",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`cardId` TEXT NOT NULL, `programId` TEXT NOT NULL, `issuerPublicKey` BLOB NOT NULL, `programName` TEXT NOT NULL, `threshold` INTEGER NOT NULL, `reward` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, `color` INTEGER NOT NULL, `icon` TEXT NOT NULL, PRIMARY KEY(`cardId`))",
+        "fields": [
+          {
+            "fieldPath": "cardId",
+            "columnName": "cardId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "programId",
+            "columnName": "programId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "issuerPublicKey",
+            "columnName": "issuerPublicKey",
+            "affinity": "BLOB",
+            "notNull": true
+          },
+          {
+            "fieldPath": "programName",
+            "columnName": "programName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "threshold",
+            "columnName": "threshold",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "reward",
+            "columnName": "reward",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "color",
+            "columnName": "color",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "icon",
+            "columnName": "icon",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "cardId"
+          ]
+        }
+      },
+      {
+        "tableName": "collector_stamps",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`cardId` TEXT NOT NULL, `stampIdHex` TEXT NOT NULL, `stampTokenBytes` BLOB NOT NULL, PRIMARY KEY(`cardId`, `stampIdHex`))",
+        "fields": [
+          {
+            "fieldPath": "cardId",
+            "columnName": "cardId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "stampIdHex",
+            "columnName": "stampIdHex",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "stampTokenBytes",
+            "columnName": "stampTokenBytes",
+            "affinity": "BLOB",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "cardId",
+            "stampIdHex"
+          ]
+        }
+      },
+      {
+        "tableName": "issuer_minted_stamps",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`programId` TEXT NOT NULL, `stampIdHex` TEXT NOT NULL, `mintedAt` INTEGER NOT NULL, PRIMARY KEY(`programId`, `stampIdHex`))",
+        "fields": [
+          {
+            "fieldPath": "programId",
+            "columnName": "programId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "stampIdHex",
+            "columnName": "stampIdHex",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "mintedAt",
+            "columnName": "mintedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "programId",
+            "stampIdHex"
+          ]
+        }
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'eaaa92ef3a8a395345d4c0d2f2db5118')"
+    ]
+  }
+}

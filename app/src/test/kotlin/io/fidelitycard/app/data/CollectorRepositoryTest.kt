@@ -35,9 +35,31 @@ class CollectorRepositoryTest {
 
     private suspend fun holdStamps(count: Int) {
         (1..count).forEach {
-            val token = StampToken.mint(issuer, PROGRAM_ID, CARD_ID)
+            val token = StampToken.mint(issuer, PROGRAM_ID)
             stampDao.insert(CollectorStampEntity(CARD_ID, token.stampId.toHex(), token.toWireBytes()))
         }
+    }
+
+    @Test
+    fun `accepts a stamp scanned directly from the issuer, with no request sent first`() = runBlocking {
+        seedCard(threshold = 1)
+        val stampBytes = StampToken.mint(issuer, PROGRAM_ID).toWireBytes()
+
+        val outcome = repository.acceptStampResponse(CARD_ID, stampBytes)
+
+        assertInstanceOf(StampAcceptOutcome.Accepted::class.java, outcome)
+        Unit
+    }
+
+    @Test
+    fun `rejects a stamp minted for a different program`() = runBlocking {
+        seedCard(threshold = 1)
+        val stampBytes = StampToken.mint(issuer, "SOMEONE-ELSES-PROGRAM").toWireBytes()
+
+        val outcome = repository.acceptStampResponse(CARD_ID, stampBytes)
+
+        assertInstanceOf(StampAcceptOutcome.Rejected::class.java, outcome)
+        Unit
     }
 
     @Test

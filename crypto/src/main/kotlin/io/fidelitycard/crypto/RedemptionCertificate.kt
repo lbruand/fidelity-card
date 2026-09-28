@@ -11,16 +11,16 @@ import java.time.Instant
 
 /**
  * Closes out a redemption (SPEC/SPECS.md §5.4 / §6.3): the issuer's receipt
- * that [redeemedCount] stamps for this card were verified and exchanged
- * for the reward. Since stamps are unordered (see [StampToken]), this
- * certifies a count, not a range - the collector already knows exactly
- * which stamp IDs it submitted and deletes those locally; the issuer's own
- * record of which specific stamp IDs are now spent lives in its
- * redeemed-stamps store, not in this certificate.
+ * that [redeemedCount] stamps for this program were verified and exchanged
+ * for the reward. Since stamps are unordered (see [StampToken]) and not
+ * bound to a collector identity, this certifies a count, not a range or a
+ * card - the collector already knows exactly which stamp IDs it submitted
+ * and deletes those locally; the issuer's own record of which specific
+ * stamp IDs are now spent lives in its redeemed-stamps store, not in this
+ * certificate.
  */
 class RedemptionCertificate private constructor(
     val programId: String,
-    val cardId: String,
     val redeemedCount: Int,
     val redeemedAt: Instant,
     private val redemptionId: ByteArray,
@@ -29,7 +29,7 @@ class RedemptionCertificate private constructor(
 
     fun toWireBytes(): ByteArray =
         WireWriter()
-            .apply { writeSignedPayload(this, programId, cardId, redeemedCount, redeemedAt, redemptionId) }
+            .apply { writeSignedPayload(this, programId, redeemedCount, redeemedAt, redemptionId) }
             .writeFixedBytes(signature, SIGNATURE_LENGTH_BYTES)
             .toByteArray()
 
@@ -39,7 +39,6 @@ class RedemptionCertificate private constructor(
         fun issue(
             issuer: SigningKeyPair,
             programId: String,
-            cardId: String,
             redeemedCount: Int,
             redeemedAt: Instant = Instant.now(),
             redemptionId: ByteArray = randomRedemptionId(),
@@ -51,11 +50,11 @@ class RedemptionCertificate private constructor(
             val redeemedAt = Instant.ofEpochMilli(redeemedAt.toEpochMilli())
 
             val payload = WireWriter()
-                .apply { writeSignedPayload(this, programId, cardId, redeemedCount, redeemedAt, redemptionId) }
+                .apply { writeSignedPayload(this, programId, redeemedCount, redeemedAt, redemptionId) }
                 .toByteArray()
             val signature = issuer.sign(payload)
 
-            return RedemptionCertificate(programId, cardId, redeemedCount, redeemedAt, redemptionId, signature)
+            return RedemptionCertificate(programId, redeemedCount, redeemedAt, redemptionId, signature)
         }
 
         fun parseAndVerify(bytes: ByteArray, issuerPublicKey: VerifyingKey): RedemptionCertificate {
@@ -63,7 +62,6 @@ class RedemptionCertificate private constructor(
             reader.readAndVerifyHeader(MessageTag.REDEMPTION)
 
             val programId = reader.readString()
-            val cardId = reader.readString()
             val redeemedCount = reader.readInt32()
             val redeemedAt = Instant.ofEpochMilli(reader.readInt64())
             val redemptionId = reader.readFixedBytes(REDEMPTION_ID_LENGTH_BYTES)
@@ -71,7 +69,7 @@ class RedemptionCertificate private constructor(
             reader.requireFullyConsumed()
 
             val payload = WireWriter()
-                .apply { writeSignedPayload(this, programId, cardId, redeemedCount, redeemedAt, redemptionId) }
+                .apply { writeSignedPayload(this, programId, redeemedCount, redeemedAt, redemptionId) }
                 .toByteArray()
             if (!issuerPublicKey.verify(payload, signature)) {
                 throw InvalidSignatureException(
@@ -79,13 +77,12 @@ class RedemptionCertificate private constructor(
                 )
             }
 
-            return RedemptionCertificate(programId, cardId, redeemedCount, redeemedAt, redemptionId, signature)
+            return RedemptionCertificate(programId, redeemedCount, redeemedAt, redemptionId, signature)
         }
 
         private fun writeSignedPayload(
             writer: WireWriter,
             programId: String,
-            cardId: String,
             redeemedCount: Int,
             redeemedAt: Instant,
             redemptionId: ByteArray,
@@ -93,7 +90,6 @@ class RedemptionCertificate private constructor(
             writer.writeByte(WIRE_VERSION)
             writer.writeByte(MessageTag.REDEMPTION)
             writer.writeString(programId)
-            writer.writeString(cardId)
             writer.writeInt32(redeemedCount)
             writer.writeInt64(redeemedAt.toEpochMilli())
             writer.writeFixedBytes(redemptionId, REDEMPTION_ID_LENGTH_BYTES)

@@ -8,6 +8,7 @@ import io.fidelitycard.app.data.FidelityCardDatabase
 import io.fidelitycard.app.data.IssuerRepository
 import io.fidelitycard.app.data.MIGRATION_4_5
 import io.fidelitycard.app.data.MIGRATION_5_6
+import io.fidelitycard.app.data.MIGRATION_6_7
 import io.fidelitycard.app.data.ModePreference
 
 /**
@@ -29,14 +30,13 @@ class FidelityApplication : Application() {
             // Room throws if one is missing instead of silently wiping
             // (TODO.md, SPEC/SPECS.md §8).
             .fallbackToDestructiveMigrationFrom(true, 1, 2, 3)
-            .addMigrations(MIGRATION_4_5, MIGRATION_5_6)
+            .addMigrations(MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
             .build()
     }
 
     val issuerRepository: IssuerRepository by lazy {
         IssuerRepository(
             database.issuerProgramDao(),
-            database.issuedCardDao(),
             database.redeemedStampDao(),
             database.issuerMintedStampDao(),
         )

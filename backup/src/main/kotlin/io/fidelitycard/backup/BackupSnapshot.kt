@@ -3,7 +3,7 @@ package io.fidelitycard.backup
 import io.fidelitycard.crypto.wire.WireReader
 import io.fidelitycard.crypto.wire.WireWriter
 
-private const val FORMAT_VERSION = 3
+private const val FORMAT_VERSION = 4
 private const val KEY_LENGTH_BYTES = 32
 
 /**
@@ -22,14 +22,17 @@ private const val KEY_LENGTH_BYTES = 32
  *
  * `FORMAT_VERSION` bumped 1 -> 2 to add [issuerMintedStamps], then 2 -> 3
  * to add `color`/`icon` to [IssuerProgramRow]/[CollectorCardRow] (card
- * personalization, TODO.md "Product / UX"). An older-version backup file
- * is rejected outright rather than read with defaulted fields - simpler,
- * and this early pre-release there's no real backup file anyone needs
- * read back.
+ * personalization, TODO.md "Product / UX"), then 3 -> 4 to drop `card_id`
+ * from [RedeemedStampRow]/[IssuerMintedStampRow] and remove the
+ * `issued_cards` table entirely (SPEC/SPECS.md §4/§5.2 - a Stamp Token
+ * isn't bound to a collector identity any more, so the issuer has no
+ * concept of "cards it has seen"). An older-version backup file is
+ * rejected outright rather than read with defaulted/dropped fields -
+ * simpler, and this early pre-release there's no real backup file anyone
+ * needs read back.
  */
 data class BackupSnapshot(
     val issuerPrograms: List<IssuerProgramRow>,
-    val issuedCards: List<IssuedCardRow>,
     val redeemedStamps: List<RedeemedStampRow>,
     val collectorCards: List<CollectorCardRow>,
     val collectorStamps: List<CollectorStampRow>,
@@ -38,7 +41,6 @@ data class BackupSnapshot(
     fun encode(): ByteArray {
         val writer = WireWriter().writeByte(FORMAT_VERSION)
         writer.writeTable(issuerPrograms) { it.writeTo(writer) }
-        writer.writeTable(issuedCards) { it.writeTo(writer) }
         writer.writeTable(redeemedStamps) { it.writeTo(writer) }
         writer.writeTable(collectorCards) { it.writeTo(writer) }
         writer.writeTable(collectorStamps) { it.writeTo(writer) }
@@ -57,7 +59,6 @@ data class BackupSnapshot(
             }
             val snapshot = BackupSnapshot(
                 issuerPrograms = reader.readTable { IssuerProgramRow.readFrom(reader) },
-                issuedCards = reader.readTable { IssuedCardRow.readFrom(reader) },
                 redeemedStamps = reader.readTable { RedeemedStampRow.readFrom(reader) },
                 collectorCards = reader.readTable { CollectorCardRow.readFrom(reader) },
                 collectorStamps = reader.readTable { CollectorStampRow.readFrom(reader) },
@@ -134,65 +135,47 @@ class IssuerProgramRow(
     }
 }
 
-/** A card id this issuer has seen (SPEC/SPECS.md §6.1 - lazily created, no key material). */
-data class IssuedCardRow(
-    val programId: String,
-    val cardId: String,
-    val createdAt: Long,
-) {
-    internal fun writeTo(writer: WireWriter) {
-        writer.writeString(programId)
-        writer.writeString(cardId)
-        writer.writeInt64(createdAt)
-    }
-
-    companion object {
-        internal fun readFrom(reader: WireReader): IssuedCardRow =
-            IssuedCardRow(reader.readString(), reader.readString(), reader.readInt64())
-    }
-}
-
-/** One stamp id this issuer has already redeemed for a card - the double-redemption spent-set. */
+/**
+ * One stamp id this issuer has already redeemed - the double-redemption
+ * spent-set, scoped per program, not per card (SPEC/SPECS.md §5.2/§7.1: a
+ * Stamp Token isn't bound to any collector identity).
+ */
 data class RedeemedStampRow(
     val programId: String,
-    val cardId: String,
     val stampIdHex: String,
     val redeemedAt: Long,
 ) {
     internal fun writeTo(writer: WireWriter) {
         writer.writeString(programId)
-        writer.writeString(cardId)
         writer.writeString(stampIdHex)
         writer.writeInt64(redeemedAt)
     }
 
     companion object {
         internal fun readFrom(reader: WireReader): RedeemedStampRow =
-            RedeemedStampRow(reader.readString(), reader.readString(), reader.readString(), reader.readInt64())
+            RedeemedStampRow(reader.readString(), reader.readString(), reader.readInt64())
     }
 }
 
 /**
- * A stamp id this issuer has ever minted for a card - the ledger the
- * large-threshold redemption fallback verifies against instead of a
- * signature (SPEC/SPECS.md §6.3/§11).
+ * A stamp id this issuer has ever minted - the ledger the large-threshold
+ * redemption fallback verifies against instead of a signature
+ * (SPEC/SPECS.md §6.3/§11).
  */
 data class IssuerMintedStampRow(
     val programId: String,
-    val cardId: String,
     val stampIdHex: String,
     val mintedAt: Long,
 ) {
     internal fun writeTo(writer: WireWriter) {
         writer.writeString(programId)
-        writer.writeString(cardId)
         writer.writeString(stampIdHex)
         writer.writeInt64(mintedAt)
     }
 
     companion object {
         internal fun readFrom(reader: WireReader): IssuerMintedStampRow =
-            IssuerMintedStampRow(reader.readString(), reader.readString(), reader.readString(), reader.readInt64())
+            IssuerMintedStampRow(reader.readString(), reader.readString(), reader.readInt64())
     }
 }
 

@@ -8,12 +8,16 @@ package io.fidelitycard.crypto.wire
  * so it wasn't buying real security; see SPEC/SPECS.md §6.1. This also
  * frees up its type tag, reused by renumbering rather than left as a gap.
  * Bumped to 4 when Program Manifest gained `color`/`icon` (TODO.md
- * "Product / UX" - card personalization); Stamp Token and Redemption
- * Certificate didn't change shape, but the shared version byte still
- * moves for all of them, since a reader can't otherwise tell which
- * Program Manifest layout it's looking at.
+ * "Product / UX" - card personalization). Bumped to 5 when Stamp Token
+ * and Redemption Certificate both dropped `card_id` entirely: a stamp's
+ * value now lives in holding its bytes, not in a collector identity, so
+ * minting a stamp no longer needs the issuer to learn anything from the
+ * collector first - it's a one-way QR (issuer mints, collector scans),
+ * not a request/response round trip. See SPEC/SPECS.md §4/§6.2 for the
+ * reasoning and the accepted trade-off (a leaked stamp is redeemable by
+ * whoever gets to redemption first, not just its original recipient).
  */
-const val WIRE_VERSION = 4
+const val WIRE_VERSION = 5
 
 /** Ed25519 signatures are always exactly 64 bytes. */
 const val SIGNATURE_LENGTH_BYTES = 64

@@ -235,10 +235,17 @@ fun BusinessDetailScreen(programId: String, onBack: () -> Unit) {
                         )
                     }
                     Button(
+                        onClick = { viewModel.giveStamp() },
+                        modifier = Modifier.fillMaxWidth().height(72.dp),
+                    ) {
+                        Text("Give a stamp", style = MaterialTheme.typography.titleMedium)
+                    }
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Button(
                         onClick = { scanner.launch() },
                         modifier = Modifier.fillMaxWidth().height(72.dp),
                     ) {
-                        Text("Scan a customer", style = MaterialTheme.typography.titleMedium)
+                        Text("Scan a customer (redeem reward)", style = MaterialTheme.typography.titleMedium)
                     }
                 }
             }

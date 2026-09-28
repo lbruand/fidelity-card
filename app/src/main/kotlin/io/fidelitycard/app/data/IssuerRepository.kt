@@ -24,31 +24,30 @@ data class ProgramSummary(
     val icon: String,
 )
 
-/** What happened after the issuer scanned whatever a customer's phone was showing. */
+/** What happened after the issuer scanned a customer's redemption request. */
 sealed interface IssuerScanOutcome {
-    data class Stamped(val responseBytes: ByteArray) : IssuerScanOutcome
     data class Redeemed(val responseBytes: ByteArray) : IssuerScanOutcome
     data class Failed(val message: String) : IssuerScanOutcome
 }
 
 /**
- * Everything the issuer side of the app does: create programs, and respond
- * to whatever a customer's phone shows via the single "Scan a customer"
- * action (SPEC/SPECS.md §6). Each program's signing key is reconstructed
- * from its stored seed only for the moment it's needed to sign a response,
- * never held longer than that.
+ * Everything the issuer side of the app does: create programs, mint
+ * stamps, and respond to a customer's redemption request via "Scan a
+ * customer" (SPEC/SPECS.md §6). Each program's signing key is
+ * reconstructed from its stored seed only for the moment it's needed to
+ * sign a response, never held longer than that.
  *
- * There is no enrollment step (SPEC/SPECS.md §6.1): a card id is first
- * seen (and lazily recorded) the moment it shows up in a stamp request.
- * Stamps are unordered (§6.2): minting one is unconditional, gated only by
- * the cashier's own decision to tap "Scan a customer" for a real purchase
- * - the same trust model as a paper stamp card. Only redemption is
- * cryptographically gated, via [RedemptionValidator] and the spent-stamp-id
- * store in [redeemedStampDao].
+ * There is no enrollment step (SPEC/SPECS.md §6.1), and a Stamp Token
+ * isn't bound to any collector/card id either (§5.2/§6.2): minting is a
+ * single one-way QR, unconditional, gated only by the cashier's own
+ * decision to tap "Give a stamp" for a real purchase - the same trust
+ * model as a paper stamp card. Only redemption is cryptographically
+ * gated, via [RedemptionValidator] and the spent-stamp-id store in
+ * [redeemedStampDao] (scoped per program, not per card - whoever holds
+ * enough valid, unspent stamps can redeem them).
  */
 class IssuerRepository(
     private val programDao: IssuerProgramDao,
-    private val issuedCardDao: IssuedCardDao,
     private val redeemedStampDao: RedeemedStampDao,
     private val mintedStampDao: IssuerMintedStampDao,
 ) {
@@ -77,7 +76,22 @@ class IssuerRepository(
         return entity.toSummary()
     }
 
-    /** The single entry point behind "Scan a customer": figures out what the scan means and responds to it. */
+    /**
+     * "Give a stamp": mints unconditionally, no scan or customer input
+     * needed first (SPEC/SPECS.md §6.2) - a stamp isn't addressed to
+     * anyone, so there's nothing to learn from the customer before
+     * minting one. Returns `null` only if [programId] itself doesn't
+     * exist (e.g. stale UI state).
+     */
+    suspend fun mintStamp(programId: String): ByteArray? {
+        val program = programDao.findById(programId) ?: return null
+        val issuer = SigningKeyPair.fromSeed(program.issuerSeed)
+        val stamp = StampToken.mint(issuer, program.programId)
+        mintedStampDao.insert(IssuerMintedStampEntity(program.programId, stamp.stampId.toHex(), mintedAt = System.currentTimeMillis()))
+        return stamp.toWireBytes()
+    }
+
+    /** The single entry point behind "Scan a customer": a redemption request, small or large. */
     suspend fun handleCustomerMessage(programId: String, scannedBytes: ByteArray): IssuerScanOutcome {
         val program = programDao.findById(programId)
             ?: return IssuerScanOutcome.Failed("This business could not be found")
@@ -89,27 +103,9 @@ class IssuerRepository(
 
         val issuer = SigningKeyPair.fromSeed(program.issuerSeed)
         return when (message) {
-            is CustomerMessage.StampRequest -> handleStamp(program, issuer, message)
             is CustomerMessage.RedemptionRequest -> handleRedemption(program, issuer, message)
-            is CustomerMessage.LargeRedemptionRequest -> handleLargeRedemption(program, message)
+            is CustomerMessage.LargeRedemptionRequest -> handleLargeRedemption(program, issuer, message)
         }
-    }
-
-    private suspend fun handleStamp(
-        program: IssuerProgramEntity,
-        issuer: SigningKeyPair,
-        request: CustomerMessage.StampRequest,
-    ): IssuerScanOutcome {
-        if (issuedCardDao.find(program.programId, request.cardId) == null) {
-            issuedCardDao.insert(
-                IssuedCardEntity(program.programId, request.cardId, createdAt = System.currentTimeMillis()),
-            )
-        }
-        val stamp = StampToken.mint(issuer, program.programId, request.cardId)
-        mintedStampDao.insert(
-            IssuerMintedStampEntity(program.programId, request.cardId, stamp.stampId.toHex(), mintedAt = System.currentTimeMillis()),
-        )
-        return IssuerScanOutcome.Stamped(stamp.toWireBytes())
     }
 
     private suspend fun handleRedemption(
@@ -117,12 +113,9 @@ class IssuerRepository(
         issuer: SigningKeyPair,
         request: CustomerMessage.RedemptionRequest,
     ): IssuerScanOutcome {
-        val card = issuedCardDao.find(program.programId, request.cardId)
-            ?: return IssuerScanOutcome.Failed("This card could not be found")
-
         val stampIdHexes = try {
             request.compactStampProofs.map { proof ->
-                val token = StampToken.parseAndVerifyCompactProof(proof, program.programId, card.cardId, issuer.publicKey)
+                val token = StampToken.parseAndVerifyCompactProof(proof, program.programId, issuer.publicKey)
                 token.stampId.toHex()
             }
         } catch (e: InvalidSignatureException) {
@@ -131,56 +124,52 @@ class IssuerRepository(
             // real log line rather than vanishing - this is exactly the kind
             // of thing that's indistinguishable from a wire-format regression
             // without one.
-            Log.w(TAG, "Redemption rejected: stamp signature did not verify (program=${program.programId}, card=${card.cardId})", e)
+            Log.w(TAG, "Redemption rejected: stamp signature did not verify (program=${program.programId})", e)
             return IssuerScanOutcome.Failed("One of those stamps isn't valid")
         } catch (e: MalformedMessageException) {
-            Log.w(TAG, "Redemption rejected: a stamp proof was malformed (program=${program.programId}, card=${card.cardId})", e)
+            Log.w(TAG, "Redemption rejected: a stamp proof was malformed (program=${program.programId})", e)
             return IssuerScanOutcome.Failed("One of those stamps isn't valid")
         } catch (e: IllegalArgumentException) {
             // This one *shouldn't* be reachable via the app's own encode/decode
             // path (compact proofs are always fixed-length) - if it fires, it
             // most likely means a real bug, so log it louder.
-            Log.e(TAG, "Redemption rejected: a stamp proof had an unexpected length - likely a bug, not user error (program=${program.programId}, card=${card.cardId})", e)
+            Log.e(TAG, "Redemption rejected: a stamp proof had an unexpected length - likely a bug, not user error (program=${program.programId})", e)
             return IssuerScanOutcome.Failed("One of those stamps isn't valid")
         }
 
-        return finalizeRedemption(program, issuer, card, stampIdHexes)
+        return finalizeRedemption(program, issuer, stampIdHexes)
     }
 
     /**
      * The large-threshold fallback (SPEC/SPECS.md §6.3/§11): stamp ids
      * arrive bare, with no signature to check, so authenticity comes from
      * this issuer device's own [mintedStampDao] ledger instead - a raw id
-     * this device never minted for this card simply won't be found.
+     * this device never minted simply won't be found.
      */
     private suspend fun handleLargeRedemption(
         program: IssuerProgramEntity,
+        issuer: SigningKeyPair,
         request: CustomerMessage.LargeRedemptionRequest,
     ): IssuerScanOutcome {
-        val card = issuedCardDao.find(program.programId, request.cardId)
-            ?: return IssuerScanOutcome.Failed("This card could not be found")
-        val issuer = SigningKeyPair.fromSeed(program.issuerSeed)
-
         val stampIdHexes = request.stampIds.map { it.toHex() }
-        val known = mintedStampDao.findKnown(program.programId, card.cardId, stampIdHexes).toSet()
+        val known = mintedStampDao.findKnown(program.programId, stampIdHexes).toSet()
         if (known.size != stampIdHexes.toSet().size) {
-            // Expected occasionally: a stamp id this issuer never minted for
-            // this card (forged, or from a different card/program) - the
-            // ledger equivalent of a signature failing to verify.
-            Log.w(TAG, "Large redemption rejected: a stamp id was not found in this issuer's minted ledger (program=${program.programId}, card=${card.cardId})")
+            // Expected occasionally: a stamp id this issuer never minted
+            // (forged, or from a different program) - the ledger equivalent
+            // of a signature failing to verify.
+            Log.w(TAG, "Large redemption rejected: a stamp id was not found in this issuer's minted ledger (program=${program.programId})")
             return IssuerScanOutcome.Failed("One of those stamps isn't valid")
         }
 
-        return finalizeRedemption(program, issuer, card, stampIdHexes)
+        return finalizeRedemption(program, issuer, stampIdHexes)
     }
 
     private suspend fun finalizeRedemption(
         program: IssuerProgramEntity,
         issuer: SigningKeyPair,
-        card: IssuedCardEntity,
         stampIdHexes: List<String>,
     ): IssuerScanOutcome {
-        val alreadyRedeemed = redeemedStampDao.findAlreadyRedeemed(program.programId, card.cardId, stampIdHexes).toSet()
+        val alreadyRedeemed = redeemedStampDao.findAlreadyRedeemed(program.programId, stampIdHexes).toSet()
         return when (
             val result = RedemptionValidator.validate(
                 submittedStampIds = stampIdHexes,
@@ -192,16 +181,15 @@ class IssuerRepository(
             RedemptionValidator.Result.Valid -> {
                 val redeemedAt = System.currentTimeMillis()
                 redeemedStampDao.insertAll(
-                    stampIdHexes.map { RedeemedStampEntity(program.programId, card.cardId, it, redeemedAt) },
+                    stampIdHexes.map { RedeemedStampEntity(program.programId, it, redeemedAt) },
                 )
-                val cert = RedemptionCertificate.issue(issuer, program.programId, card.cardId, stampIdHexes.size)
+                val cert = RedemptionCertificate.issue(issuer, program.programId, stampIdHexes.size)
                 IssuerScanOutcome.Redeemed(cert.toWireBytes())
             }
         }
     }
 
     private fun CustomerMessage.programId(): String = when (this) {
-        is CustomerMessage.StampRequest -> programId
         is CustomerMessage.RedemptionRequest -> programId
         is CustomerMessage.LargeRedemptionRequest -> programId
     }

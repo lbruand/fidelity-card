@@ -21,13 +21,9 @@ class BackupSnapshotTest {
                 icon = "☕",
             ),
         ),
-        issuedCards = listOf(
-            IssuedCardRow(programId = "PROGRAM1", cardId = "card-1", createdAt = 1_700_000_001_000L),
-        ),
         redeemedStamps = listOf(
             RedeemedStampRow(
                 programId = "PROGRAM1",
-                cardId = "card-1",
                 stampIdHex = "00112233445566778899aabbccddeeff",
                 redeemedAt = 1_700_000_002_000L,
             ),
@@ -55,7 +51,6 @@ class BackupSnapshotTest {
         issuerMintedStamps = listOf(
             IssuerMintedStampRow(
                 programId = "PROGRAM1",
-                cardId = "card-1",
                 stampIdHex = "00112233445566778899aabbccddeeff",
                 mintedAt = 1_700_000_004_000L,
             ),
@@ -71,7 +66,7 @@ class BackupSnapshotTest {
 
     @Test
     fun `round trips when every table is empty`() {
-        val empty = BackupSnapshot(emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), emptyList())
+        val empty = BackupSnapshot(emptyList(), emptyList(), emptyList(), emptyList(), emptyList())
 
         assertEquals(empty, BackupSnapshot.decode(empty.encode()))
     }

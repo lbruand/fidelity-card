@@ -49,14 +49,15 @@ sealed interface RedemptionAcceptOutcome {
 }
 
 /**
- * Everything the collector side of the app does: join a program, request
- * and accept stamps, and build/accept a redemption (SPEC/SPECS.md §6). Any
- * message this device didn't sign itself is parsed with `parseAndVerify`
- * and never trusted otherwise.
+ * Everything the collector side of the app does: join a program, accept
+ * stamps, and build/accept a redemption (SPEC/SPECS.md §6). Any message
+ * this device didn't sign itself is parsed with `parseAndVerify` and
+ * never trusted otherwise.
  *
  * The collector holds no cryptographic identity at all (SPEC/SPECS.md
- * §4/§6.1): a card id is just a locally-generated opaque string. Nothing
- * downstream ever needs to verify who the collector is - a Stamp Token's
+ * §4/§6.1): a card id is just a locally-generated opaque string that never
+ * leaves this device. Nothing downstream ever needs to verify who the
+ * collector is, or which card a stamp belongs to (§5.2) - a Stamp Token's
  * or Redemption Certificate's issuer signature is what makes it real, and
  * possessing the actual signed stamp bytes is what makes a redemption
  * valid, neither of which requires the collector to prove anything about
@@ -113,11 +114,12 @@ class CollectorRepository(
         )
     }
 
-    suspend fun buildStampRequest(cardId: String): ByteArray? {
-        val card = cardDao.findById(cardId) ?: return null
-        return CustomerMessage.StampRequest(card.programId, cardId).toWireBytes()
-    }
-
+    /**
+     * Accepts whatever the issuer's screen is showing directly - a single
+     * scan, no request sent first (SPEC/SPECS.md §6.2): a Stamp Token
+     * isn't addressed to any particular card, so there's nothing for this
+     * device to ask for in advance.
+     */
     suspend fun acceptStampResponse(cardId: String, stampBytes: ByteArray): StampAcceptOutcome {
         val card = cardDao.findById(cardId)
             ?: return StampAcceptOutcome.Rejected("This card could not be found")
@@ -126,14 +128,14 @@ class CollectorRepository(
         val stamp = try {
             StampToken.parseAndVerify(stampBytes, issuerPublicKey)
         } catch (e: InvalidSignatureException) {
-            Log.w(TAG, "Stamp response did not verify against this card's pinned issuer key (card=$cardId)", e)
+            Log.w(TAG, "Stamp did not verify against this card's pinned issuer key (card=$cardId)", e)
             return StampAcceptOutcome.Rejected("That code isn't a valid stamp from this business")
         } catch (e: MalformedMessageException) {
-            Log.w(TAG, "Stamp response was malformed (card=$cardId)", e)
+            Log.w(TAG, "Stamp was malformed (card=$cardId)", e)
             return StampAcceptOutcome.Rejected("That code isn't a valid stamp from this business")
         }
-        if (stamp.programId != card.programId || stamp.cardId != card.cardId) {
-            return StampAcceptOutcome.Rejected("That stamp is for a different card")
+        if (stamp.programId != card.programId) {
+            return StampAcceptOutcome.Rejected("That stamp is for a different business")
         }
 
         stampDao.insert(CollectorStampEntity(cardId, stamp.stampId.toHex(), stampBytes))
@@ -176,9 +178,9 @@ class CollectorRepository(
         // (SPEC/SPECS.md §6.3/§11). Only switch once that many proofs would
         // push a QR past a comfortable size.
         val request = if (verified.size > LARGE_REDEMPTION_STAMP_COUNT_THRESHOLD) {
-            CustomerMessage.LargeRedemptionRequest(card.programId, cardId, verified.map { it.second })
+            CustomerMessage.LargeRedemptionRequest(card.programId, verified.map { it.second })
         } else {
-            CustomerMessage.RedemptionRequest(card.programId, cardId, verified.map { it.third })
+            CustomerMessage.RedemptionRequest(card.programId, verified.map { it.third })
         }
         return PendingRedemption(verified.map { it.first }, request.toWireBytes())
     }
@@ -201,8 +203,8 @@ class CollectorRepository(
             Log.w(TAG, "Redemption confirmation was malformed (card=$cardId)", e)
             return RedemptionAcceptOutcome.Rejected("That code isn't a valid confirmation from this business")
         }
-        if (cert.programId != card.programId || cert.cardId != card.cardId) {
-            return RedemptionAcceptOutcome.Rejected("That confirmation is for a different card")
+        if (cert.programId != card.programId) {
+            return RedemptionAcceptOutcome.Rejected("That confirmation is for a different business")
         }
 
         stampDao.deleteByIds(cardId, pending.stampIdHexes)

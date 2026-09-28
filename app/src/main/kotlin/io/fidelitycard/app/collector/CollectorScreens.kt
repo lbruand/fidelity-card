@@ -232,15 +232,42 @@ fun StampFlowScreen(cardId: String, onBack: () -> Unit, onDone: () -> Unit) {
     val viewModel: StampFlowViewModel = viewModel(
         factory = viewModelFactory { initializer { StampFlowViewModel(repo, cardId) } },
     )
-    ExchangeFlowScreen(
-        title = "Get a stamp",
-        state = viewModel.state,
-        onBack = onBack,
-        onDone = onDone,
-        onNextTapped = viewModel::onNextTapped,
-        onScanned = viewModel::onScanned,
-        onRetry = viewModel::retry,
-    )
+    val currentState by viewModel.state.collectAsState()
+    val scanner = rememberQrScanLauncher(viewModel::onScanned)
+
+    Scaffold(
+        topBar = { TopAppBar(title = { Text("Get a stamp") }, navigationIcon = { BackButton(onBack) }) },
+    ) { padding: PaddingValues ->
+        Column(
+            modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+        ) {
+            when (val s = currentState) {
+                GetStampState.ReadyToScan -> {
+                    Text("Scan the business's screen", style = MaterialTheme.typography.titleMedium)
+                    Spacer(modifier = Modifier.height(24.dp))
+                    Button(onClick = { scanner.launch() }, modifier = Modifier.fillMaxWidth().height(72.dp)) {
+                        Text("Scan")
+                    }
+                }
+                is GetStampState.Done -> {
+                    Text(s.message, style = MaterialTheme.typography.headlineSmall)
+                    Spacer(modifier = Modifier.height(24.dp))
+                    Button(onClick = onDone, modifier = Modifier.fillMaxWidth().height(56.dp)) {
+                        Text("Done")
+                    }
+                }
+                is GetStampState.Failed -> {
+                    Text(s.message, style = MaterialTheme.typography.titleMedium)
+                    Spacer(modifier = Modifier.height(24.dp))
+                    Button(onClick = { viewModel.retry() }, modifier = Modifier.fillMaxWidth().height(56.dp)) {
+                        Text("Try again")
+                    }
+                }
+            }
+        }
+    }
 }
 
 @Composable
