@@ -23,10 +23,22 @@ another platform.
 
 ## Screenshots
 
-*Pending — the app has been built and run on a real device, but
-screenshots haven't been captured yet. See
-[`docs/screenshots/README.md`](docs/screenshots/README.md) for what's
-needed and where they go.*
+<table>
+<tr>
+<td align="center" width="33%">
+<img src="docs/screenshots/create_business.png" width="260" alt="Creating a business card, with stamps-needed, reward, color and icon"><br>
+Issuer: create a business
+</td>
+<td align="center" width="33%">
+<img src="docs/screenshots/give_a_stamp.png" width="260" alt="A signed stamp QR code, ready to show to a customer"><br>
+Issuer: give a stamp
+</td>
+<td align="center" width="33%">
+<img src="docs/screenshots/stamp_card.png" width="260" alt="A collector's card, showing filled/empty stamp dots and a Get a stamp button"><br>
+Collector: a card's progress
+</td>
+</tr>
+</table>
 
 ## How it works
 
